@@ -1,0 +1,11 @@
+venv/
+.venv/
+
+.vscode/
+
+resources/
+
+temp_extracted_data.json
+
+__pycache__/
+

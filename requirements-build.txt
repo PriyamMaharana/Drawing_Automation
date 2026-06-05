@@ -1,0 +1,8 @@
+# Include production requirements
+# -r requirements.txt
+
+# Packaging
+pyinstaller>=5.0.0
+
+# Compilation / Security
+Nuitka>=2.0.0

@@ -9,3 +9,6 @@ temp_extracted_data.json
 
 __pycache__/
 
+README.md
+
+debug/

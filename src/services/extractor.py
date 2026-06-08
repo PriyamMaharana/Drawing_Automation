@@ -8,33 +8,44 @@ class PDFExtractor:
     def __init__(self, pdf_path: str):
         self.pdf_path = pdf_path
         self.doc = fitz.open(pdf_path)
+        
+        self.cad_symbol_pattern = re.compile(r'[\Ø\±\°\⌀\⌖\↗\⌰\⟂\∥\∠\▱\⌭\⌓\⌒\Ⓜ\Ⓛ\Ⓢ\⌯\◎\─\○]')
+        self.cad_keyword_pattern = re.compile(r'\b(PCD|THRU|TYP|CHAM|CBORE|CSK|REF|MAX|MIN|SPLINE|ASSY)\b')
+        self.cad_dimension_pattern = re.compile(r'\b[RNMHhgkp]\d{1,3}\b')
+        self.cad_tolerance_pattern = re.compile(r'[+-]\s?\d*\.\d+')
 
     def is_drawing_page(self, page: fitz.Page, page_num: int, health_status: str) -> bool:
-        """
-        Enterprise-Grade Page Router using a Weighted Confidence Scoring Matrix.
-        """
         score = 0
         diagnostics = []
-        page_area = page.rect.width * page.rect.height
+        
+        page_area = max((page.rect.width * page.rect.height), 1.0) 
 
-        # --- 1. VECTOR MORPHOLOGY & INK SPREAD ---
         paths = page.get_drawings()
         total_paths = len(paths)
         
+        text_dict = page.get_text("dict")
+        blocks = text_dict.get("blocks", [])
+        
         if total_paths == 0:
-            print(f"  -> [MATRIX] Page {page_num} ⏩ REJECTED | Score: 0 | No vector paths found.")
+            print(f"  -> [MATRIX] Page {page_num} ⏩ REJECTED | No vector paths found.")
             return False
             
+        if total_paths < 20 and len(blocks) > 10:
+            print(f"  -> [MATRIX] Page {page_num} ⏩ REJECTED | Geometry Gate: Pure text/notes page.")
+            return False
+        
         curve_count = 0
         min_x, min_y = float('inf'), float('inf')
         max_x, max_y = float('-inf'), float('-inf')
         
         for path in paths:
-            # CIRCUIT BREAKER: Skip deep morphology analysis if it's a Vector Bomb to save CPU
             if health_status != "VECTOR_BOMB":
                 for item in path["items"]:
                     if item[0] in ("c", "v", "y"):
                         curve_count += 1
+                
+                if curve_count > 505:
+                    break 
             
             r = path.get("rect")
             if r and r.is_valid:
@@ -76,13 +87,12 @@ class PDFExtractor:
                 score -= 20
                 diagnostics.append(f"Low Ink Spread ({ink_spread:.1f}%) (-20)")
 
-        # --- 2. THE "WORD SALAD" FILTER (Text-to-Vector Ratio) ---
+        # --- 2. THE "WORD SALAD" FILTER ---
         page_text = page.get_text("text").upper()
         char_count = len(page_text.strip())
+        text_to_path_ratio = char_count / total_paths if total_paths > 0 else 0
         
-        if total_paths > 0:
-            text_to_path_ratio = char_count / total_paths
-            
+        if total_paths > 0:            
             if curve_count == 0 and text_to_path_ratio > 1.5 and total_paths < 2000:
                 score -= 60
                 diagnostics.append(f"Zero Curves + Text-Heavy Ratio ({text_to_path_ratio:.1f}) (-60)")
@@ -94,10 +104,9 @@ class PDFExtractor:
                 diagnostics.append(f"Geometry-Heavy Ratio ({text_to_path_ratio:.1f}) (+20)")
 
         # --- 3. TYPOGRAPHICAL SIGNATURES & DISPERSION ---
-        text_dict = page.get_text("dict")
-        blocks = text_dict.get("blocks", [])
-        
         symbol_blocks_found = 0
+        hard_math_symbols_found = 0
+        
         sym_min_x, sym_min_y = float('inf'), float('inf')
         sym_max_x, sym_max_y = float('-inf'), float('-inf')
 
@@ -105,8 +114,18 @@ class PDFExtractor:
             if block.get("type") == 0:
                 block_text = "".join([span.get("text", "") for line in block.get("lines", []) for span in line.get("spans", [])]).upper()
                 
-                if re.search(r'[\Ø\±\°]', block_text):
-                    symbol_blocks_found += 1
+                has_symbol = self.cad_symbol_pattern.search(block_text) 
+                has_keyword = self.cad_keyword_pattern.search(block_text)
+                has_dimension = self.cad_dimension_pattern.search(block_text)
+                has_tolerance = self.cad_tolerance_pattern.search(block_text)
+                
+                weights = sum([bool(has_symbol), bool(has_keyword), bool(has_dimension), bool(has_tolerance)])
+                
+                if weights > 0:
+                    symbol_blocks_found += weights
+                    if has_symbol or has_tolerance:
+                        hard_math_symbols_found += 1
+                        
                     bx0, by0, bx1, by1 = block["bbox"]
                     sym_min_x = min(sym_min_x, bx0)
                     sym_min_y = min(sym_min_y, by0)
@@ -122,22 +141,31 @@ class PDFExtractor:
             if (sym_spread_area / page_area) * 100 > 30:
                 score += 20
                 diagnostics.append("Symbols Widely Dispersed (+20)")
+                
         elif symbol_blocks_found == 0:
             score -= 10
             diagnostics.append("No CAD Symbols (-10)")
 
-        # --- 4. CONDITIONAL PENALTIES ---
+        # --- 4. CONDITIONAL PENALTIES (THE TERMINATORS) ---
         if "TRACK & TRACE" in page_text:
             score -= 40
             diagnostics.append("Cover Keyword 'TRACK & TRACE' (-40)")
             
-        if "BILL OF MATERIAL" in page_text:
-            if symbol_blocks_found == 0:
-                if (0 < curve_count < 500) or (curve_count == 0 and text_to_path_ratio > 1.2):
-                    score -= 100
-                    diagnostics.append("Dedicated Table Page (No CAD Symbols) (-100)")
-                else:
-                    diagnostics.append("BOM Penalty Bypassed (Shattered CAD Signature)")
+        symbol_density = (hard_math_symbols_found / char_count) * 1000 if char_count > 0 else 0
+        
+        is_table_grid = char_count > 2500 and symbol_density < 2.0 and (curve_count < 500 and health_status != "VECTOR_BOMB")
+        
+        if is_table_grid:
+            print(f"  -> [MATRIX] Page {page_num} ⏩ REJECTED | Absolute Terminator: Table/Notes Signature (High Volume, Low GD&T)")
+            return False
+            
+        if text_to_path_ratio > 1.5:
+            print(f"  -> [MATRIX] Page {page_num} ⏩ REJECTED | Absolute Terminator: Document Signature (Text Ratio: {text_to_path_ratio:.1f})")
+            return False
+            
+        if total_paths < 20:
+            print(f"  -> [MATRIX] Page {page_num} ⏩ REJECTED | Absolute Terminator: Raster/Empty Signature")
+            return False
 
         # --- FINAL DECISION ---
         is_drawing = score >= 40
@@ -145,6 +173,7 @@ class PDFExtractor:
         print(f"  -> [MATRIX] Page {page_num} {status} | Score: {score} | Breakdown: {', '.join(diagnostics)}")
         
         return is_drawing
+
 
     def extract_text_parameters(self) -> List[TextParameter]:
         """

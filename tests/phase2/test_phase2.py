@@ -46,7 +46,7 @@ def run_phase2_tests():
             package = p1_pipeline.execute(pdf_path)
             
             if package.document_profile.health_status not in ["CLEAN", "VECTOR_BOMB"] or not package.primary_page:
-                logging.info(f"  └─ ⏩ SKIPPED (Phase 1 rejected: {package.document_profile.health_status})")
+                logging.warning(f"  └─ ⏩ SKIPPED (Phase 1 rejected: {package.document_profile.health_status})")
                 skipped += 1
                 continue
             

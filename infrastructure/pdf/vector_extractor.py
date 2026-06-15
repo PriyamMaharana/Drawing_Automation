@@ -26,7 +26,7 @@ try:
     from infrastructure.ocr.engine import run_ocr
     from core.entities.geometry import BoundingBox, PDFCharacter, PDFPath, PDFImage, VectorPage
 except ImportError as e:
-    logging.error(f"Unable to import microservices: {e}")
+    logging.error(f"Microservices import failure: {e}")
     
     
 class PDFVectorExtractor:
@@ -101,11 +101,11 @@ class PDFVectorExtractor:
             
             file_path = crops_dir / f"{pdf_name}_p{page_num}_img{idx}.png"
             pix.save(str(file_path))
-            self.logger.info(f" -> Saved Raw Crop: {file_path.name}")
+            self.logger.debug(f" -> Saved Raw Crop: {file_path.name}")
             
             image_bytes = pix.tobytes("png")
             
-            self.logger.info(f" -> Found Image at {rect}. Initiating OpenCV & Tesseract...")
+            self.logger.debug(f" -> Found Image at {rect}. Initiating OpenCV & Tesseract...")
             debug_filename = f"{pdf_name}_p{page_num}_img{idx}_ocr_feed.png"
             ocr_data = run_ocr(image_bytes, debug_name=debug_filename)
             

@@ -30,7 +30,7 @@ try:
     from core.entities.document import DocumentProfile, PageProfile, DrawingPackage
     from rules.cad_dictionary import CADSignatures, OEMSignatures, PaperSizeSignatures
 except ImportError as e:
-    logging.error(f"Unable to import microservices: {e}")
+    logging.error(f"Microservices import failure: {e}")
 
 class DocumentScout:
     """

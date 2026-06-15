@@ -6,7 +6,7 @@ from pathlib import Path
 try:
     from infrastructure.pdf.document_scout import DocumentScout
 except ImportError as e:
-    logging.error(f"Microservices not loaded: {e}")
+    logging.error(f"Microservices import failure: {e}")
 
 class Phase1Pipeline:
     def __init__(self, project_root: Path):

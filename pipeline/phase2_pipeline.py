@@ -7,7 +7,7 @@ try:
     from infrastructure.pdf.vector_extractor import PDFVectorExtractor
     from core.entities.document import DrawingPackage
 except ImportError as e:
-    logging.error(f"Microservices not loaded: {e}")
+    logging.error(f"Microservices import failure: {e}")
 
 class Phase2Pipeline:
     def __init__(self, project_root: Path):
@@ -17,15 +17,7 @@ class Phase2Pipeline:
         
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.res_dir.mkdir(parents=True, exist_ok=True)
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(self.log_dir / "vector_extraction.log"),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
+
 
     def execute(self, pdf_path: Path, drawing_package):
         logging.info(f"Starting Phase 2 Execution for: {pdf_path.name}")

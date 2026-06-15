@@ -43,7 +43,7 @@ def setup_3_tier_logging(phase_name: str, project_root: Path):
     dev_handler.setLevel(logging.DEBUG)
     dev_handler.setFormatter(standard_formatter)
 
-    # 3. Crash Handler (ERRORS ONLY)
+    # 3. Crash Handler (ERRORS & EXCEPTIONS)
     crash_handler = logging.FileHandler(crash_log, encoding='utf-8')
     crash_handler.setLevel(logging.ERROR)
     crash_handler.setFormatter(error_formatter)

@@ -1,14 +1,13 @@
-venv/
 .venv/
+venv
+
+.pytest_cache/
 
 .vscode/
 
-resources/
-
-__pycache__/
-
-README.md
-
 debug/
 
-log/
+docs/
+
+__pycache__
+

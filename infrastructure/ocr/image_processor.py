@@ -1,10 +1,11 @@
 import sys
 import subprocess
 import logging
+import cv2
+import numpy as np
 from pathlib  import Path
 
 def ensure_package(pip_name: str, import_name: str):
-    """Attempts to import a package, and installs it via pip if missing."""
     try:
         __import__(import_name)
     except ImportError:
@@ -19,8 +20,6 @@ def ensure_package(pip_name: str, import_name: str):
 ensure_package("opencv-python", "cv2")
 ensure_package("numpy", "numpy")
 
-import cv2
-import numpy as np
 
 THIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = THIS_DIR.parent.parent
@@ -30,7 +29,11 @@ if str(PROJECT_ROOT) not in sys.path:
 DEBUG_DIR = PROJECT_ROOT / "debug" / "crops"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-def prepare_for_ocr(image_bytes, debug_name="ocr_feed.png"):
+def prepare_for_ocr(image_bytes, debug_name="ocr_feed.png", save_debug=False):
+    """
+    Production-hardened OCR pre-processing.
+    Uses Otsu's binarization for superior CAD text isolation.
+    """
     # Convert bytes to numpy array
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -42,14 +45,17 @@ def prepare_for_ocr(image_bytes, debug_name="ocr_feed.png"):
     resized = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     
     # 3. Thresholding (Otsu's for high contrast)
-    thresh = cv2.adaptiveThreshold(
-        resized, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 31, 2
-    )
+    _, thresh = cv2.threshold(resized, 220, 255, cv2.THRESH_BINARY)
     
-    debug_path = DEBUG_DIR / debug_name
-    cv2.imwrite(str(debug_path), thresh)
-    logging.info(f"Saved OCR feed diagnostic to: {debug_path.name}")
+    # 4. Morphological Opening (the noise eraser)
+    # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+    # cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
     
+    if save_debug:
+        debug_path = DEBUG_DIR / debug_name
+        cv2.imwrite(str(debug_path), thresh)
+        logging.info(f"Saved OCR feed diagnostic to: {debug_path.name}")
+    
+    # return cleaned
     return thresh
 

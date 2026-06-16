@@ -119,7 +119,7 @@ def run_reverse_render(json_filename: str):
     
 
 if __name__ == "__main__":
-    run_reverse_render("ch3_phase2.json")
+    run_reverse_render("new_phase2.json")
     
     
     

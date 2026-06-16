@@ -104,6 +104,5 @@ class Phase3Pipeline:
 if __name__ == "__main__":
     setup_3_tier_logging(phase_name="phase3", project_root=PROJECT_ROOT)
     pipeline = Phase3Pipeline(PROJECT_ROOT)
-    # pipeline.execute("1")
     
     

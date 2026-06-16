@@ -4,14 +4,28 @@ from typing import List
 
 try:
     from core.entities.geometry import PDFCharacter, PDFWord, PDFLine, BoundingBox
+    from rules.cad_dictionary import CADSignatures
 except ImportError as e:
     logging.exception(f"Microservices import failure: {e}")
+    
+    
+def is_garbage(text: str) -> bool:
+    if re.fullmatch(r'[?~|_\-]+', text):
+        return True
+    
+    alpha = re.sub(r'[^a-zA-Z]', '', text)
+    if len(alpha) >= 3 and not any(c in 'aeiouAEIOU' for c in alpha):
+        return True
+    
+    if CADSignatures.SYMBOLS.match(text):
+        return True
+    
+    return False
 
 def clean_text(text: str) -> str:
-    """Removes CAD hash line hallucinations and garbage OCR symbols."""
+    # Remove fragments, repeated dash-line artifacts, and common OCR noise
     cleaned = re.sub(r'^[^\w\s]{1,3}$', '', text) 
-    cleaned = re.sub(r'[eEaAoOsS]{3,}', '', cleaned)
-    cleaned = re.sub(r'(.)\1{3,}', '', cleaned)
+    cleaned = re.sub(r'(.)\1{2,}', '', cleaned)
     cleaned = cleaned.replace('???', '').replace('~', '').replace('|', '').replace('_', '')
     return cleaned.strip()
 
@@ -26,66 +40,53 @@ def build_semantic_hierarchy(raw_characters: List[PDFCharacter]) -> List[PDFLine
     valid_chars = []
     for c in raw_characters:
         c.text = clean_text(c.text)
-        if c.text:  
-            valid_chars.append(c)
+        if c.text: valid_chars.append(c)
             
-    if not valid_chars:
-        return []
-
+    if not valid_chars: return []
     valid_chars.sort(key=lambda c: (c.bbox.center_y, c.bbox.x0))
-
-    raw_lines: List[List[PDFCharacter]] = []
-    current_line: List[PDFCharacter] = [valid_chars[0]]
     
-    for i in range(1, len(valid_chars)):
-        char = valid_chars[i]
-        prev_char = current_line[-1]
-        
-        y_diff = abs(char.bbox.center_y - prev_char.bbox.center_y)
-        
-        y_tolerance = max(char.font_size, prev_char.font_size) * 0.6
-        
-        if y_diff <= y_tolerance:
-            current_line.append(char)
-        else:
-            raw_lines.append(current_line)
-            current_line = [char]
+    # -- Pass 1 -- Strict word assembly --
+    raw_words: List[PDFWord] = []
+    if valid_chars:
+        current_word_chars: List[PDFCharacter] = [valid_chars[0]]
+        for i in range(1, len(valid_chars)):
+            char, prev = valid_chars[i], current_word_chars[-1]
             
-    if current_line:
-        raw_lines.append(current_line)
-
-    semantic_lines: List[PDFLine] = []
-    
-    for line_chars in raw_lines:
-        line_chars.sort(key=lambda c: c.bbox.x0)
-        
-        words: List[PDFWord] = []
-        current_word_chars: List[PDFCharacter] = [line_chars[0]]
-        
-        for i in range(1, len(line_chars)):
-            char = line_chars[i]
-            prev_char = current_word_chars[-1]
-            
-            x_gap = char.bbox.x0 - prev_char.bbox.x1
-            
-            x_tolerance = ((char.bbox.height + prev_char.bbox.height) / 2) * 0.45
-            
-            if x_gap <= x_tolerance:
-                current_word_chars.append(char)
+            # merge only if very close
+            if abs(char.bbox.center_y - prev.bbox.center_y) < (char.font_size * 0.5) and \
+                (char.bbox.x0 - prev.bbox.x1) < (char.bbox.width * 0.4):
+                    current_word_chars.append(char)
             else:
-                words.append(_build_word(current_word_chars))
+                raw_words.append(_build_word(current_word_chars))
                 current_word_chars = [char]
-                
-        if current_word_chars:
-            words.append(_build_word(current_word_chars))
+        
+        raw_words.append(_build_word(current_word_chars))
+        
+    # -- Pass 2 -- the purge --
+    clean_words = [w for w in raw_words if not is_garbage(w.text)]
+    
+    # -- Pass 3 -- forgiving line assembly --
+    semantic_lines: List[PDFLine] = []
+    if clean_words:
+        clean_words.sort(key=lambda w: (w.bbox.center_y, w.bbox.x0))
+        current_line: List[PDFWord] = [clean_words[0]]
+        
+        for i in range(1, len(clean_words)):
+            word, prev = clean_words[i], current_line[-1]
+            gap = word.bbox.x0 - prev.bbox.x1
             
-        if words:
-            semantic_lines.append(_build_line(words))
-
+            if abs(word.bbox.center_y - prev.bbox.center_y) < (word.bbox.height * 0.6) and gap < (word.bbox.height * 5.0):
+                current_line.append(word)
+            else:
+                semantic_lines.append(_build_line(current_line))
+                current_line = [word]
+                
+        semantic_lines.append(_build_line(current_line))
+    
     return semantic_lines
+    
 
 def _build_word(chars: List[PDFCharacter]) -> PDFWord:
-    """Helper to stitch characters into a single PDFWord with a dynamic BBox."""
     word_text = "".join(c.text for c in chars)    
     word_bbox = BoundingBox(chars[0].bbox.x0, chars[0].bbox.y0, chars[0].bbox.x1, chars[0].bbox.y1)
     
@@ -95,7 +96,6 @@ def _build_word(chars: List[PDFCharacter]) -> PDFWord:
     return PDFWord(text=word_text, bbox=word_bbox, characters=chars)
 
 def _build_line(words: List[PDFWord]) -> PDFLine:
-    """Helper to stitch Words into a single PDFLine with a dynamic BBox."""
     line_text = " ".join(w.text for w in words)
     line_bbox = BoundingBox(words[0].bbox.x0, words[0].bbox.y0, words[0].bbox.x1, words[0].bbox.y1)
     

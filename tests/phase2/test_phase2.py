@@ -25,8 +25,8 @@ def run_phase2_tests():
     print("=" * 60)
 
     sample_dir = PROJECT_ROOT / "resources" / "sample_data"
-    # test_pdfs = list(sample_dir.glob("*.pdf"))    
-    test_pdfs = [sample_dir / "ch3.pdf"]
+    test_pdfs = list(sample_dir.glob("*.pdf"))    
+    # test_pdfs = [sample_dir / "ch3.pdf"]
     
     if not test_pdfs:
         logging.warning("⚠️ No PDFs found.")

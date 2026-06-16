@@ -16,15 +16,6 @@ class Phase1Pipeline:
         
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.res_dir.mkdir(parents=True, exist_ok=True)
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(self.log_dir / "scout_execution.log"),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
 
     def execute(self, pdf_path: Path):
         logging.info(f"Starting Phase 1 Execution for: {pdf_path.name}")

@@ -1,5 +1,6 @@
 import pytesseract
 import logging
+import re
 from pathlib import Path
 
 try:
@@ -22,9 +23,9 @@ else:
 
 
 def get_dynamic_whitelist() -> str:
-    base_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.:,-()°/+\"' "
+    base_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.:,-()°/+"
     raw_regex = CADSignatures.SYMBOLS.pattern
-    cad_symbols = raw_regex.replace('[', '').replace(']', '').replace('\\', '')
+    cad_symbols = re.sub(r'[\[\]\\\'"]', '', raw_regex)
     
     return "".join(set(base_chars + cad_symbols))
 

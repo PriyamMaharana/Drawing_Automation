@@ -52,6 +52,9 @@ def build_semantic_hierarchy(raw_characters: List[PDFCharacter]) -> List[PDFLine
         for i in range(1, len(valid_chars)):
             char, prev = valid_chars[i], current_word_chars[-1]
             
+            y_tolerance = char.font_size * 0.5
+            x_tolerance = char.bbox.height * 0.75
+            
             # merge only if very close
             if abs(char.bbox.center_y - prev.bbox.center_y) < (char.font_size * 0.5) and \
                 (char.bbox.x0 - prev.bbox.x1) < (char.bbox.width * 0.4):

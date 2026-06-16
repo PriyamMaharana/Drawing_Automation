@@ -20,7 +20,8 @@ def setup_3_tier_logging(phase_name: str, project_root: Path):
     # Clear old logs for the new run
     for log_file in [client_log, developer_log, crash_log]:
         if log_file.exists():
-            log_file.write_text("")
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write("\n" + "#"*60 + "\n" + f"   NEW EXECUTION RUN ({phase_name.upper()})   \n" + "#"*60 + "\n")
 
     # Reset existing handlers (prevents duplicate logs if called twice)
     logger = logging.getLogger()

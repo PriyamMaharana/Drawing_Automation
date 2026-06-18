@@ -1,5 +1,7 @@
 import sys
 import logging
+import concurrent.futures
+import multiprocessing
 from pathlib import Path
 
 # --- 1. INJECT PROJECT ROOT INTO PYTHON PATH ---
@@ -16,6 +18,28 @@ try:
 except ImportError as e:
     logging.error(f"Microservices import failure: {e}")
     raise
+
+def _process_single_pdf(pdf_path: Path) -> dict:
+    """Isolated worker function that runs on a separate CPU core."""
+    p1_pipeline = Phase1Pipeline(PROJECT_ROOT)
+    p2_pipeline = Phase2Pipeline(PROJECT_ROOT)
+    
+    try:
+        package = p1_pipeline.execute(pdf_path)
+        
+        if package.document_profile.health_status not in ["CLEAN", "VECTOR_BOMB"] or not package.primary_page:
+            return {"file": pdf_path.name, "status": "skipped", "reason": package.document_profile.health_status}
+        
+        vector_page = p2_pipeline.execute(pdf_path, package)
+        
+        t_count = len(vector_page.raw_characters)
+        p_count = len(vector_page.path_elements)
+        
+        return {"file": pdf_path.name, "status": "passed", "text_blocks": t_count, "paths": p_count}
+
+    except Exception as e:
+        return {"file": pdf_path.name, "status": "failed", "error": str(e)}
+    
 
 def run_phase2_tests():
     setup_3_tier_logging(phase_name="phase2", project_root=PROJECT_ROOT)

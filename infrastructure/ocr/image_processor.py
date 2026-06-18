@@ -98,9 +98,11 @@ def prepare_for_ocr(image_bytes, debug_name="ocr_feed.png", save_debug=False):
         ])
         sharpened = cv2.filter2D(upscaled, -1, sharpen_kernel)
         
+        dynamic_block = max(11, (upscaled.shape[1] // 60) | 1)
+        
         thresh = cv2.adaptiveThreshold(
             sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY, 35, 12   
+            cv2.THRESH_BINARY, dynamic_block, 12   
         )
         
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))

@@ -1,15 +1,9 @@
 import logging
-from typing import List, Dict, Any
-from core.entities.drawing_view import DrawingView
+import re
 
 try:
-    # Import all your new micro-engines
-    from parsers.dimensions.diameter_parser import DiameterParser
-    from parsers.dimensions.radius_parser import RadiusParser
-    from parsers.dimensions.angle_parser import AngleParser
-    from parsers.dimensions.linear_dimension_parser import LinearDimensionParser
-    from parsers.tolerances.gdt_parser import GDTParser
-    from parsers.tolerances.fit_parser import FitParser
+    from core.entities.drawing_view import DrawingView
+    from rules.cad_dictionary import CADSignatures, OEMSignatures, PaperSizeSignatures
 except ImportError as e:
     logging.error(f"Microservices import failure: {e}")
     raise
@@ -18,28 +12,45 @@ logger = logging.getLogger(__name__)
 
 class DimensionService:
     def __init__(self):
-        # the engine will test the string against
-        self.parsers = [
-            DiameterParser(),
-            RadiusParser(),
-            AngleParser(),
-            GDTParser(),
-            FitParser(),
-            LinearDimensionParser()
-        ]
-        
-    def extract_dimensions(self, view: DrawingView) -> List[Dict[str, Any]]:
-        structured_data = []
-        
-        for block in view.contained_text:
-            raw_text = block.get("text", "").strip()
+        self.base_pattern = re.compile(r'\d+')
+
+    def extract_dimensions(self, view: DrawingView) -> list:
+        dimensions = []
+        for line in view.contained_text:
+            text = line.get("text", "").strip()
+
+            if any([CADSignatures.SYMBOLS.search(text),
+                CADSignatures.KEYWORDS.search(text),
+                CADSignatures.TOLERANCES.search(text),
+                CADSignatures.DIMENSIONS.search(text),
+                self.base_pattern.search(text)]):
+                
+                entity_type = "Specification"
+                
+                if CADSignatures.SYMBOLS.search(text):
+                    if any(s in text for s in ['Ø','°','⌀','⌖','↗','⌰','⟂','∥','∠','▱','⌭','⌓','⌒']):
+                        entity_type = "Specification"
+                    elif any(t in text for t in ['±','+','-']):
+                        entity_type = "Tolerance"
+                    else:
+                        entity_type = "GD&T Symbol"
+                        
+                elif CADSignatures.TOLERANCES.search(text):
+                    entity_type = "Tolerence"
+                
+                else:
+                    entity_type = "Specification"
+                    
+                dimensions.append({
+                    "entity_type": entity_type,
+                    "raw_text": text,
+                    "bounding_box_pdf": line.get("bbox", [0,0,0,0]),
+                    "confidence": 0.95
+                })
+                
+        if not dimensions:
+            logger.warning(f"⚠️ No dimensions or CAD signatures found in {view.view_name}.")
             
-            for parser in self.parsers:
-                parsed_data = parser.parse(raw_text)
-                
-                if parsed_data:
-                    parsed_data["bounding_box"] = block.get("bbox")
-                    structured_data.append(parsed_data)
-                    break
-                
-        return structured_data
+        return dimensions
+
+

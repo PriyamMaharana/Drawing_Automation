@@ -35,6 +35,7 @@ def _process_single_phase4(pdf_path: Path) -> dict:
     """Isolated worker function for Phase 4."""
     p4_pipeline = Phase4Pipeline(PROJECT_ROOT)
     
+    p1_file = PROJECT_ROOT / "debug" / "results" / "phase1" / f"{pdf_path.stem}_phase1.json"
     p2_file = PROJECT_ROOT / "debug" / "results" / "phase2" / f"{pdf_path.stem}_phase2.json"
     p3_file = PROJECT_ROOT / "debug" / "results" / "phase3" / f"{pdf_path.stem}_phase3.json"
     
@@ -42,11 +43,20 @@ def _process_single_phase4(pdf_path: Path) -> dict:
         return {"file": pdf_path.name, "status": "SKIPPED", "reason": "Missing Phase 2 or 3 Cache Data"}
         
     try:
-        # 1. Load the cached Phase 2 Vector Math
+        # 0. Load Phase 1 Spatial Zones (The Red Zones)
+        spatial_zones = {}
+        image_dpi = 300
+        if p1_file.exists():
+            with open(p1_file, 'r', encoding='utf-8') as f:
+                p1_data = json.load(f).get("output", {})
+                spatial_zones = p1_data.get("spatial_zones", {})
+                doc_profile = p1_data.get("document_profile", {})
+                image_dpi = doc_profile.get("recommended_dpi", 300)
+
+        # 1. Load Phase 2 Vector Math
         with open(p2_file, 'r', encoding='utf-8') as f:
             p2_raw = json.load(f)
             p2_data = p2_raw.get("output", p2_raw)
-            
             dims = p2_data.get("page_dimensions", {})
             v_page = VectorPage(
                 page_number=1, 
@@ -55,31 +65,32 @@ def _process_single_phase4(pdf_path: Path) -> dict:
             )
             v_page.path_elements = p2_data.get("path_elements", [])
             
-        # 2. Load the cached Phase 3 Semantic Text
+        # 2. Load Phase 3 Semantic Text
         with open(p3_file, 'r', encoding='utf-8') as f:
             p3_raw = json.load(f)
             p3_data = p3_raw.get("output", p3_raw)
-            
-            if isinstance(p3_data, dict):
-                semantic_lines = p3_data.get("lines", [])
-            elif isinstance(p3_data, list):
-                semantic_lines = p3_data
-            else:
-                semantic_lines = []
+            semantic_lines = p3_data.get("semantic_lines", [])
             
         # 3. Extract High-Res Raw Image for the Balloon Renderer
         doc = fitz.open(str(pdf_path))
         page = doc[0] 
-        pix = page.get_pixmap(dpi=300, alpha=False)
+        pix = page.get_pixmap(dpi=image_dpi, alpha=False)
         raw_image_bytes = pix.tobytes("png")
         doc.close()
             
-        # 4. RUN INTELLIGENCE ENGINE
-        intelligence, total_balloons = p4_pipeline.execute(pdf_path, v_page, semantic_lines, raw_image_bytes)
+        # 4. RUN FULL INTELLIGENCE ENGINE
+        intelligence, total_balloons = p4_pipeline.execute(
+            pdf_path, 
+            v_page, 
+            semantic_lines, 
+            raw_image_bytes, 
+            spatial_zones=spatial_zones,
+            image_dpi=image_dpi
+        )
         
         return {
             "file": pdf_path.name, 
-            "status": "passed", 
+            "status": "PASSED", 
             "views": len(intelligence), 
             "balloons": total_balloons
         }
@@ -100,7 +111,7 @@ def run_phase4_tests():
         logging.warning("⚠️ No PDFs found in sample_data directory.")
         return
     
-    passed, skipped, failed = 0, 0, 0
+    PASSED, SKIPPED, FAILED = 0, 0, 0
     max_cores = max(1, multiprocessing.cpu_count() - 1)
 
     logging.info(f"🚀 Igniting Parallel Intelligence Engine across {max_cores} CPU Cores...")
@@ -110,19 +121,21 @@ def run_phase4_tests():
         
         for future in concurrent.futures.as_completed(future_to_pdf):
             result = future.result()
-            if result["status"] == "passed":
+            if result["status"] == "PASSED":
                 logging.info(f"  └─ ✅ PASSED {result['file']} ({result['views']} Views, {result['balloons']} Balloons Stamped)")
-                passed += 1
-            elif result["status"] == "skipped":
+                PASSED += 1
+            elif result["status"] == "SKIPPED":
                 logging.warning(f"  └─ ⏩ SKIPPED {result['file']} ({result['reason']})")
-                skipped += 1
+                SKIPPED += 1
             else:
                 logging.exception(f"  └─ ❌ CRASH {result['file']} (Error: {result['error']})")
-                failed += 1
+                FAILED += 1
 
     logging.info("-" * 60)
-    logging.info(f"  PHASE 4 RUN COMPLETE: {passed} PASSED | {skipped} SKIPPED | {failed} FAILED")
+    logging.info(f"  PHASE 4 RUN COMPLETE: {PASSED} PASSED | {SKIPPED} SKIPPED | {FAILED} FAILED")
     logging.info("-" * 60)
 
 if __name__ == "__main__":
     run_phase4_tests()
+    
+    

@@ -1,5 +1,11 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Dict, Any, Optional
+from enum import Enum
+
+class CoordSpace(Enum):
+    PDF_POINTS = 72
+    OCR_300DPI = 300
+    ZONE_DPI = -1
 
 @dataclass
 class BoundingBox:
@@ -7,6 +13,31 @@ class BoundingBox:
     y0: float
     x1: float
     y1: float
+    space: CoordSpace = CoordSpace.PDF_POINTS
+    
+    @property
+    def is_valid(self) -> bool:
+        return self.x1 > self.x0 and self.y1 > self.y0
+    
+    def to_space(self, target_dpi: int) -> 'BoundingBox':
+        source_dpi = 72 if self.space == CoordSpace.PDF_POINTS else (300 if self.space == CoordSpace.OCR_300DPI else -1)
+        if source_dpi == -1:
+            raise ValueError(f"Cannot mathematically convert from unknown space: {self.space}")
+        
+        scale = target_dpi / source_dpi
+        return BoundingBox(
+            x0=self.x0 * scale,
+            y0=self.y0 * scale,
+            x1=self.x1 * scale,
+            y1=self.y1 * scale,
+            space=CoordSpace.OCR_300DPI if target_dpi == 300 else CoordSpace.PDF_POINTS
+        )
+    
+    def to_pdf_points(self) -> 'BoundingBox':
+        return self.to_space(72)
+    
+    def to_pixels(self, dpi: int) -> 'BoundingBox':
+        return self.to_space(dpi)
     
     @property
     def width(self) -> float: return self.x1 - self.x0
@@ -69,6 +100,7 @@ class VectorPage:
     raw_characters: List[PDFCharacter] = field(default_factory=list)
     path_elements: List[PDFPath] = field(default_factory=list)
     image_elements: List[PDFImage] = field(default_factory=list)
+    isolated_elements: List[dict] = field(default_factory=list)
     
     def to_dict(self):
         return {
@@ -82,6 +114,7 @@ class VectorPage:
                 "total_vector_paths": len(self.path_elements),
                 "total_images": len(self.image_elements)
             },
+            "isolated_views": self.isolated_views,
             "raw_characters": [
                 {
                     "text": c.text,

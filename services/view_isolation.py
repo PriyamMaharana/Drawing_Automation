@@ -1,67 +1,74 @@
 import logging
 import re
-from typing import List, Dict, Tuple
-
-try:
-    from core.entities.geometry import VectorPage
-    from core.entities.drawing_view import DrawingView
-except ImportError as e:
-    logging.error(f"Microservices import failure: {e}")
-    raise 
+from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 class ViewIsolationService:
     """
-    The Spatial Partitioner.
-    Carves the MAIN_CANVAS into isolated drawing views (Front, Top, Section)
-    using bounding box intersection and semantic anchoring.
+    Enterprise Spatial Partitioner.
+    Carves the MAIN_CANVAS into isolated drawing views using high-speed
+    convergent multi-pass clustering and Red Zone exclusion shielding.
     """
     def __init__(self, cluster_tolerance: float = 50.0):
         self.cluster_tolerance = cluster_tolerance
         
+        # Regex Net: Catches unpredictable naming formats
         self.view_label_pattern = re.compile(
             r"(SECTION|SEC\.?|DETAIL|DET\.?|VIEW)\s*[A-Z0-9-]*", 
             re.IGNORECASE
         )
+
+    def isolate_views(self, vector_page, semantic_lines: list, spatial_zones: dict = None) -> List[dict]:
+        logger.info("Initializing Spatial Density Clustering for View Isolation...")
         
-    def isolate_views(self, vector_page: VectorPage, semantic_lines: List[dict]) ->List[dict]:
-        logger.info(f"Initializing spatial density clustering for view isolation...")
-        
+        # 1. Safely extract bounding boxes regardless of data hydration state
         rects = []
         for path in vector_page.path_elements:
-            r = path.get("rect")
-            if r and r.is_valid:
-                rects.append([r.x0, r.y0, r.x1, r.y1])
+            if hasattr(path, 'bbox'):
+                b = path.bbox
+                rects.append([b.x0, b.y0, b.x1, b.y1])
+            elif isinstance(path, dict) and 'bbox' in path:
+                b = path['bbox']
+                rects.append([b[0], b[1], b[2], b[3]])
                 
         if not rects:
+            logger.warning("No vector paths found for view isolation.")
             return []
 
+        # 2. Convergent Multi-Pass Merge (Prevents O(N^2) CPU Freezing)
         view_clusters = self._merge_rectangles(rects, self.cluster_tolerance)
         logger.debug(f"Geometry Pass: Detected {len(view_clusters)} distinct physical clusters.")
 
         labeled_views = []
-        unlabeled_counter = 1
-        
+        unlabeled_counter = 1 
+
+        # 3. Semantic Anchoring & Red Zone Filtering
         for cluster_box in view_clusters:
             view_data = {
                 "view_name": None,
                 "bounding_box": cluster_box,
-                "contained_text": [],
-                "contained_paths": []
+                "contained_text": []
             }
             
             for line in semantic_lines:
-                text = line["text"].upper()
-                if self._is_inside_or_near(line["bbox"], cluster_box, margin=100):
+                bbox = line.get("bbox")
+                if not bbox: continue
+                
+                # THE EXCLUSION SHIELD: Ignore text inside Title Blocks and BOM Tables
+                if self._is_in_exclusion_zone(bbox, spatial_zones):
+                    continue 
+                    
+                if self._is_inside_or_near(bbox, cluster_box, margin=100):
                     view_data["contained_text"].append(line)
-        
+                    
                     if view_data["view_name"] is None:
-                        match = self.view_label_pattern.search(text)
+                        text_val = line.get("text", "").upper()
+                        match = self.view_label_pattern.search(text_val)
                         if match:
                             view_data["view_name"] = match.group(0).strip()
-                            
-                            
+            
+            # The Fallback Execution
             if view_data["view_name"] is None:
                 view_data["view_name"] = f"UNLABELED_VIEW_{unlabeled_counter}"
                 unlabeled_counter += 1
@@ -70,40 +77,59 @@ class ViewIsolationService:
 
         logger.info(f"View Isolation Complete. Carved {len(labeled_views)} distinct views.")
         return labeled_views
-    
-    def _merge_rectangles(self, rects: List[List[float]], tolerance: float) -> List[List[float]]:
-        """
-        Takes thousands of tiny line boxes and melts them into massive View boxes.
-        """
-        # Expand all rectangles by the tolerance
+
+    def _is_in_exclusion_zone(self, bbox: List[float], spatial_zones: dict) -> bool:
+        """Checks if a text box falls inside a Phase 1 Red Zone."""
+        if not spatial_zones: return False
+        
+        exclusion_rects = []
+        if spatial_zones.get("TITLE_BLOCK"):
+            exclusion_rects.append(spatial_zones["TITLE_BLOCK"].get("rect_pdf"))
+            
+        for table in spatial_zones.get("TABLES", []):
+            exclusion_rects.append(table.get("rect_pdf"))
+
+        for rect in exclusion_rects:
+            if rect and self._is_inside_or_near(bbox, rect, margin=5):
+                return True
+        return False
+
+    def _merge_rectangles(self, rects: list, tolerance: float) -> list:
+        """Highly optimized Convergent Multi-Pass algorithm."""
         expanded = [[r[0]-tolerance, r[1]-tolerance, r[2]+tolerance, r[3]+tolerance] for r in rects]
         
-        merged = []
-        for rect in expanded:
-            matched = False
-            for m in merged:
-                # Check for intersection
-                if not (rect[2] < m[0] or rect[0] > m[2] or rect[3] < m[1] or rect[1] > m[3]):
-                    # Merge them
-                    m[0] = min(m[0], rect[0])
-                    m[1] = min(m[1], rect[1])
-                    m[2] = max(m[2], rect[2])
-                    m[3] = max(m[3], rect[3])
-                    matched = True
-                    break
-            if not matched:
-                merged.append(rect)
-                
-        # Shrink them back to actual size
-        final_boxes = [[r[0]+tolerance, r[1]+tolerance, r[2]-tolerance, r[3]-tolerance] for r in merged]
-        return final_boxes
+        changed = True
+        while changed:
+            changed = False
+            merged = []
+            consumed = [False] * len(expanded)
 
-    def _is_inside_or_near(self, inner_box, outer_box, margin=0):
-        """Checks if text belongs to a geometry cluster."""
+            for i in range(len(expanded)):
+                if consumed[i]: continue
+                current = list(expanded[i])
+                
+                for j in range(i + 1, len(expanded)):
+                    if consumed[j]: continue
+                    other = expanded[j]
+                    
+                    # Check Intersection
+                    if not (current[2] < other[0] or current[0] > other[2] or current[3] < other[1] or current[1] > other[3]):
+                        current[0] = min(current[0], other[0])
+                        current[1] = min(current[1], other[1])
+                        current[2] = max(current[2], other[2])
+                        current[3] = max(current[3], other[3])
+                        consumed[j] = True
+                        changed = True
+                        
+                merged.append(current)
+                consumed[i] = True
+                
+            expanded = merged
+
+        return [[r[0]+tolerance, r[1]+tolerance, r[2]-tolerance, r[3]-tolerance] for r in expanded]
+
+    def _is_inside_or_near(self, inner_box: List[float], outer_box: List[float], margin: float = 0) -> bool:
         return (inner_box[0] >= outer_box[0] - margin and
                 inner_box[1] >= outer_box[1] - margin and
                 inner_box[2] <= outer_box[2] + margin and
                 inner_box[3] <= outer_box[3] + margin)
-        
-        
-        

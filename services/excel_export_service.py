@@ -1,51 +1,59 @@
 import logging
+import re
 import pandas as pd
 from pathlib import Path
-from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 class ExcelExportService:
-    """
-    Takes structured intelligence from Phase 4 and maps it directly 
-    into standard engineering Excel templates.
-    """
     def __init__(self, template_path: Path, output_dir: Path):
         self.template_path = template_path
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def generate_inspection_report(self, pdf_name: str, intelligence_data: List[Dict[str, Any]]):
-        """Flattens the DrawingViews and generates the Excel sheet."""
-        flattened_rows = []
+    def _split_specification_and_tolerance(self, raw_text: str):
+        raw_text = str(raw_text).strip()
         
-        # Unpack the hierarchical JSON into flat rows for Excel
-        for view in intelligence_data:
-            view_name = view.get("view_name", "UNKNOWN")
-            
+        if '±' in raw_text:
+            parts = raw_text.split('±')
+            return parts[0].strip(), '±' + parts[1].strip()
+        
+        match = re.search(r'^(.*?)([\+\-]\s*\d+\.?\d*.*)$', raw_text)
+        if match:
+            base = match.group(1).strip()
+            tol = match.group(2).strip()
+            if any(char.isdigit() for char in base) or "Ø" in base or "R" in base:
+                return base, tol
+        
+        return raw_text, ""
+
+    def generate_inspection_report(self, filename: str, intelligence: list):
+        flattened_rows = []        
+        for view in intelligence:           
             for dim in view.get("dimensions", []):
+                raw_text = dim.get("raw_text", "")
+                spec, tol = self._split_specification_and_tolerance(raw_text)
+                
                 flattened_rows.append({
-                    "Drawing View": view_name,
-                    "Feature Type": dim.get("feature_type", ""),
-                    "Quantity": dim.get("quantity", 1),
-                    "Nominal Value": dim.get("nominal", ""),
-                    "Upper Tolerance": dim.get("upper_tolerance", ""),
-                    "Lower Tolerance": dim.get("lower_tolerance", ""),
-                    "Raw OCR Text": dim.get("raw_text", "")
+                    "SL NO.": dim.get("balloon_id"),
+                    "Product Parameter": "",
+                    "Specification": spec,
+                    "Tolerance": tol,
+                    "Checking Method": "",
+                    "Observation": "",
+                    "Remarks": ""
                 })
                 
-        if not flattened_rows:
-            logger.warning(f"No dimensions extracted for {pdf_name}. Skipping Excel export.")
+        if flattened_rows:
+            df = pd.DataFrame(flattened_rows, columns=[
+                "SL NO.", "Product Parameter", "Specification", 
+                "Tolerance", "Checking Method", "Observation", "Remarks"
+            ])
+            
+            output_file = self.output_dir / f"{filename.replace('.pdf', '')}_Report.xlsx"
+            df.to_excel(output_file, index=False, sheet_name="Extracted Dimensions")
+            logger.info(f"💾 Excel Report Generated: {output_file.name}")
+        else:
+            logger.warning(f"No dimensions extracted for {filename}. Skipping Excel export.")
             return
 
-        # Convert to Pandas DataFrame
-        df = pd.DataFrame(flattened_rows)
-        
-        # Export to Excel
-        output_file = self.output_dir / f"{pdf_name.replace('.pdf', '')}_Inspection_Report.xlsx"
-        
-        # If you have a strict template, you would use openpyxl to write to specific cells here.
-        # For now, we will auto-generate a clean sheet.
-        df.to_excel(output_file, index=False, sheet_name="Extracted Dimensions")
-        logger.info(f"💾 Excel Report Generated: {output_file.name}")
-        

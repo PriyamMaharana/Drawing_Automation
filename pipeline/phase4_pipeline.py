@@ -13,6 +13,8 @@ try:
 except ImportError as e:
     logging.error(f"Microservices import failure: {e}")
 
+logger = logging.getLogger(__name__)
+
 class Phase4Pipeline:
     def __init__(self, project_root: Path):
         self.project_root = project_root
@@ -30,23 +32,34 @@ class Phase4Pipeline:
         self.view_service = ViewIsolationService(cluster_tolerance=50.0)
         self.dimension_service = DimensionService()
         self.balloon_service = BallooningService(start_index=1)
-        self.balloon_renderer = BalloonRenderer(self.balloon_dir)
+        # self.balloon_renderer = BalloonRenderer(self.balloon_dir, render_dpi=300)
         
         # Initialize Excel Exporter
         template_path = self.project_root / "resources" / "excel_templates" / "Excel_Format.xlsx"
         self.export_service = ExcelExportService(template_path, self.excel_dir)
 
-    def execute(self, pdf_path: Path, vector_page: VectorPage, semantic_lines: list, raw_image_bytes: bytes):
+    def execute(self, pdf_path: Path, vector_page: VectorPage, semantic_lines: list, raw_image_bytes: bytes, spatial_zones: dict = None, image_dpi: int = 300):
         logging.info(f"Starting Phase 4 (Intelligence Layer) for: {pdf_path.name}")
         
+        scale = image_dpi / 72.0
+        normalized_lines = []
+        for line in semantic_lines:
+            new_line = line.copy()
+            # Divide by scale to convert 300/400 DPI pixels into 72 DPI PDF Points
+            new_line["bbox"] = [v / scale for v in line.get("bbox", [0,0,0,0])]
+            normalized_lines.append(new_line)
+        
         # 1. Spatial Partitioning: Carve the canvas into isolated views
-        isolated_views = self.view_service.isolate_views(vector_page, semantic_lines)
+        isolated_views = self.view_service.isolate_views(
+            vector_page, 
+            semantic_lines, 
+            spatial_zones=spatial_zones
+        )
         
         # 2. Lexical Parsing: Extract dimensions per view
         final_intelligence = []
-        
+                
         for view_dict in isolated_views:
-            # Rehydrate into Entity
             view_entity = DrawingView(
                 view_name=view_dict["view_name"],
                 bounding_box=view_dict["bounding_box"],
@@ -65,12 +78,13 @@ class Phase4Pipeline:
         
         # 4. The Visual Render: Draw the red bubbles on the blueprint
         if raw_image_bytes:
-            self.balloon_renderer.render_fai_page(pdf_path.name, raw_image_bytes, final_intelligence)
+            renderer = BalloonRenderer(self.balloon_dir, render_dpi=image_dpi)
+            renderer.render_fai_page(pdf_path.name, raw_image_bytes, final_intelligence)
+            
+            # self.balloon_renderer.render_fai_page(pdf_path.name, raw_image_bytes, final_intelligence)
         
-        # 5. Export JSON Payload
+        # 5. Export JSON Payload & Excel sheet
         self._export_json(pdf_path, final_intelligence)
-        
-        # 6. Generate the Final Client Excel Report
         self.export_service.generate_inspection_report(pdf_path.name, final_intelligence)
         
         return final_intelligence, total_balloons

@@ -23,7 +23,7 @@ import fitz
 import numpy as np
 
 try:
-    from infrastructure.ocr.engine import run_ocr
+    from infrastructure.ocr.hybrid_engine import run_ocr
     from core.entities.geometry import BoundingBox, PDFCharacter, PDFPath, PDFImage, VectorPage
 except ImportError as e:
     logging.error(f"Microservices import failure: {e}")
@@ -91,7 +91,7 @@ class PDFVectorExtractor:
         # 3. Remove Duplicate Bounding Boxes
         unique_rects = [r for i, r in enumerate(raw_rects) if not any(abs(ur.x0 - r.x0) < 1.0 for ur in raw_rects[:i])]
 
-        BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+        BASE_DIR = Path(__file__).resolve().parent.parent.parent
         crops_dir = BASE_DIR / "debug" / "crops"
         crops_dir.mkdir(parents=True, exist_ok=True)
         

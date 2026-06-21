@@ -26,7 +26,7 @@ ensure_package("numpy", "numpy")
 
 try:
     from core.entities.document import DocumentProfile, PageProfile, DrawingPackage
-    from rules.cad_dictionary import CADSignatures, OEMSignatures, PaperSizeSignatures
+    from core.dictionaries.cad_dictionary import CADSignatures, OEMSignatures, PaperSizeSignatures
 except ImportError as e:
     logging.error(f"Microservices import failure: {e}")
 

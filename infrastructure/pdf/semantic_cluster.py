@@ -4,7 +4,7 @@ from typing import List
 
 try:
     from core.entities.geometry import PDFCharacter, PDFWord, PDFLine, BoundingBox
-    from rules.cad_dictionary import CADSignatures
+    from core.dictionaries.cad_dictionary import CADSignatures
 except ImportError as e:
     logging.exception(f"Microservices import failure: {e}")
     

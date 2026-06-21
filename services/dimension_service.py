@@ -3,7 +3,7 @@ import re
 
 try:
     from core.entities.drawing_view import DrawingView
-    from rules.cad_dictionary import CADSignatures, OEMSignatures, PaperSizeSignatures
+    from core.dictionaries.cad_dictionary import CADSignatures, OEMSignatures, PaperSizeSignatures
 except ImportError as e:
     logging.error(f"Microservices import failure: {e}")
     raise

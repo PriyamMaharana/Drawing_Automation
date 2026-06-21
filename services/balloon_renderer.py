@@ -42,7 +42,6 @@ class BalloonRenderer:
                 # 4. Draw Native Vector Text
                 font_size = 10
                 text_w = fitz.get_text_length(b_id, fontname="helv", fontsize=font_size)
-                # Perfect center alignment math
                 text_rect = fitz.Rect(center_x - text_w/2, center_y - font_size/2 - 1, center_x + text_w/2 + 2, center_y + font_size/2 + 1)
                 
                 text_annot = page.add_freetext_annot(text_rect, b_id, fontsize=font_size, fontname="helv", text_color=(1, 0, 0))

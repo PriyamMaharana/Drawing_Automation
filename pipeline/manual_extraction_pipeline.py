@@ -3,11 +3,11 @@ import json
 import logging
 from pathlib import Path
 from typing import List
-from core.utils.settings import PlatformSettings
 
 logger = logging.getLogger(__name__)
 
 try: 
+    from core.utils.settings import PlatformSettings
     from infrastructure.ocr.image_processor import ImageProcessor2
     from infrastructure.ocr.hybrid_engine import HybridEngine
     from services.dimension_service import DimensionService
@@ -30,9 +30,8 @@ class ManualExtractionPipeline:
         self.hybrid_engine = HybridEngine()
         self.dimension_service = DimensionService()
         self.balloon_service = BallooningService(start_index=1)
-        self.render = BalloonRenderer(self.res_dir)
-        template_path = self.project_root / "resources" / "excel_templates" / "Excel_Format.xlsx"
-        self.excel_service = ExcelExportService(template_path, self.res_dir)
+        self.renderer = BalloonRenderer(self.res_dir)
+        self.excel_service = ExcelExportService(self.res_dir)
 
     def execute(self, pdf_path: Path, page_num: int, green_zone_px: List[List[int]]):
         logger.info(f"Igniting Manual Extraction for {len(green_zone_px)} zones on {pdf_path.name}...")
@@ -58,14 +57,14 @@ class ManualExtractionPipeline:
                     ocr_engine=getattr(self, 'tesseract', None),
                     debug_path=debug_crop_path
                 )
-            else:
-                continue
+            else: continue
 
             try:
                 from core.entities.drawing_view import DrawingView
                 target_view = DrawingView(view_name=f"USER_ZONE_{idx + 1}", bounding_box=[clip_rect.x0, clip_rect.y0, clip_rect.x1, clip_rect.y1], contained_text=unified_lines)
             except ImportError:
-                return logger.error("❌ Missing File: core/entities/drawing_view.py")
+                logger.error("❌ Missing File: core/entities/drawing_view.py")
+                continue
             
             if hasattr(self, 'dimension_service'):
                 dimensions = self.dimension_service.extract_dimensions(target_view)
@@ -73,9 +72,10 @@ class ManualExtractionPipeline:
 
         if hasattr(self, 'balloon_service'):
             self.balloon_service.apply_balloons(master_intelligence)
-            
+         
+        preview_pdf_path = None   
         if hasattr(self, 'renderer'):
-            self.renderer.render_fai_page(pdf_path, page_num, master_intelligence)
+            preview_pdf_path = self.renderer.render_fai_page(pdf_path, page_num, master_intelligence)
             
         if hasattr(self, 'excel_service'):
             self.excel_service.generate_inspection_report(pdf_path.name, master_intelligence)
@@ -84,7 +84,7 @@ class ManualExtractionPipeline:
             json.dump(master_intelligence, f, indent=4)
 
         doc.close()
-        return master_intelligence
+        return master_intelligence, preview_pdf_path
 
     def _unify_text(self, native_blocks, ocr_lines, clip_rect, ocr_dpi):
         unified = []

@@ -29,28 +29,16 @@ if str(PROJECT_ROOT) not in sys.path:
 
 DEBUG_DIR = PROJECT_ROOT / "debug" / "crops"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-
-class ImageProcessor:
-    def standardize_for_ocr(self, img_bytes: bytes) -> np.ndarray:
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
-        
-        # Adaptive Thresholding to clean out background noise/shadows
-        cleaned_img = cv2.adaptiveThreshold(
-            img, 255, 
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY, 11, 2
-        )
-        return cleaned_img
-    
+   
     
 class ImageProcessor2:
     def standardize_for_ocr(self, img_bytes: bytes, debug_path: str = None) -> np.ndarray:
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+        _, binary_img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
         if debug_path:
-            cv2.imwrite(debug_path, img)
+            cv2.imwrite(debug_path, binary_img)
             
-        return img
+        return binary_img
 

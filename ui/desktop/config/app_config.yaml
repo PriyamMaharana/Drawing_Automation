@@ -1,0 +1,11 @@
+app:
+  name: "CAD Intelligence Platform"
+  version: "1.4.0"
+
+resources:
+  logo: "resources/images/app_logo.png"
+  icons:
+    dashboard: "resources/icons/layout-dashboard.svg"
+    process: "resources/icons/file-text.svg"
+    reports: "resources/icons/file-chart-column.svg"
+    settings: "resources/icons/settings.svg"

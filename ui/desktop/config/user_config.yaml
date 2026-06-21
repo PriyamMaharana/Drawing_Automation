@@ -1,0 +1,23 @@
+appearance:
+  font_family: Segoe UI
+  font_size: 10
+  theme: dark_theme.qss
+  ui_density: Compact
+export:
+  excel_template: Custom Template 1
+  generate_excel: true
+  generate_pdf: true
+  generate_summary: true
+  header_style: Style 2
+ocr:
+  auto_enhance: true
+  dpi: 300 DPI
+  enable: true
+  engine: Tesseract (Recommended)
+  min_confidence: 70%
+output:
+  create_date_folder: true
+  default_export_format: Both (Excel + PDF)
+  default_path: C:\Users\Priyam Maharana
+  keep_organized: true
+  open_after_processing: true

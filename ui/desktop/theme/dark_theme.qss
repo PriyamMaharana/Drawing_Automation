@@ -1,0 +1,46 @@
+/* Master App Background */
+QMainWindow, QWidget { background-color: #0B0F19; color: #E2E8F0; font-family: 'Segoe UI', Arial, sans-serif; }
+
+/* Scroll Area Background Fix */
+QScrollArea, QScrollArea > QWidget > QWidget { background-color: transparent; border: none; }
+
+/* Left Sidebar Styling */
+QWidget#Sidebar { background-color: #0B0F19; border-right: 1px solid #1E293B; }
+
+/* Sidebar Navigation Buttons */
+QPushButton[class="NavBtn"] { text-align: left; padding: 12px 16px; border-radius: 8px; border: none; background-color: transparent; font-size: 14px; font-weight: 600; color: #94A3B8; }
+QPushButton[class="NavBtn"]:hover { background-color: #171F32; color: #F8FAFC; }
+QPushButton[class="NavBtn"][active="true"] { background-color: #4F46E5; color: white; }
+
+/* Cards (Group Boxes) */
+QGroupBox { background-color: #171F32; border: none; border-radius: 12px; padding-top: 40px; margin-top: 10px; }
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 20px; top: 15px; font-size: 18px; font-weight: bold; color: #F8FAFC; background-color: transparent; }
+
+/* Standard Inputs & Dropdowns */
+QLineEdit, QComboBox { background-color: #0B0F19; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; color: #F8FAFC; font-size: 13px; min-width: 150px; }
+QComboBox::drop-down { border: none; width: 20px; }
+QComboBox QAbstractItemView { background-color: #171F32; color: #F8FAFC; selection-background-color: #4F46E5; border: 1px solid #334155; outline: none; }
+
+/* Buttons */
+QPushButton { background-color: #1E293B; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: bold; color: #F8FAFC; }
+QPushButton:hover { background-color: #334155; }
+QPushButton.Primary { background-color: #4F46E5; color: white; }
+QPushButton.Primary:hover { background-color: #4338CA; }
+
+/* --- CUSTOM UI WIDGETS --- */
+
+/* Selectable Option Blocks (Theme & Font Size) */
+QPushButton.OptionBlock { background-color: #0B0F19; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: #94A3B8; text-align: center; }
+QPushButton.OptionBlock:hover { border: 1px solid #4F46E5; }
+QPushButton.OptionBlock:checked { background-color: #1E1B4B; border: 2px solid #4F46E5; color: white; }
+
+/* Modern Toggle Switches (Styling QCheckBox) */
+QCheckBox.Toggle { spacing: 0px; background: transparent; }
+QCheckBox.Toggle::indicator { width: 38px; height: 20px; border-radius: 10px; border: none; }
+QCheckBox.Toggle::indicator:unchecked { background-color: #334155; }
+QCheckBox.Toggle::indicator:checked { background-color: #4F46E5; }
+
+/* Standard Checkboxes (For Output/Export Settings) */
+QCheckBox { spacing: 10px; font-size: 13px; color: #E2E8F0; background: transparent; }
+QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #4F46E5; background-color: #0B0F19; }
+QCheckBox::indicator:checked { background-color: #4F46E5; image: url(resources/icons/check.svg); } /* Will fallback nicely if SVG missing */

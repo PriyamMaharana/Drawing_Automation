@@ -1,0 +1,29 @@
+QMainWindow, QWidget { background-color: #F8FAFC; color: #0F172A; font-family: 'Segoe UI', Arial, sans-serif; }
+
+QWidget#Sidebar { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
+
+QPushButton[class="NavBtn"] { text-align: left; padding: 12px 16px; border-radius: 8px; border: none; background-color: transparent; font-size: 14px; font-weight: 600; color: #64748B; }
+QPushButton[class="NavBtn"]:hover { background-color: #F1F5F9; color: #0F172A; }
+QPushButton[class="NavBtn"][active="true"] { background-color: #3B82F6; color: white; }
+
+QListWidget#SettingsSidebar { background-color: transparent; border: none; outline: none; }
+QListWidget#SettingsSidebar::item { padding: 12px 15px; border-radius: 8px; color: #64748B; font-weight: bold; font-size: 14px; margin-bottom: 5px; }
+QListWidget#SettingsSidebar::item:hover { background-color: #F1F5F9; color: #0F172A; }
+QListWidget#SettingsSidebar::item:selected { background-color: #4F46E5; color: white; }
+
+QGroupBox { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; font-weight: bold; font-size: 16px; margin-top: 20px; padding-top: 15px; color: #0F172A; }
+QGroupBox::title { subcontrol-origin: margin; left: 15px; top: -10px; padding: 0 5px; color: #0F172A; background-color: transparent; }
+
+QLineEdit, QComboBox, QSpinBox { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; color: #0F172A; font-size: 13px; }
+QComboBox::drop-down { border: none; }
+QComboBox QAbstractItemView { background-color: #FFFFFF; color: #0F172A; selection-background-color: #3B82F6; border: 1px solid #CBD5E1; }
+
+QPushButton { background-color: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: bold; color: #0F172A; }
+QPushButton:hover { background-color: #E2E8F0; }
+QPushButton.Primary { background-color: #4F46E5; color: white; border: none; }
+QPushButton.Primary:hover { background-color: #4338CA; }
+
+QCheckBox { spacing: 10px; font-size: 13px; color: #475569; }
+QCheckBox::indicator { width: 36px; height: 20px; border-radius: 10px; border: 1px solid #CBD5E1; }
+QCheckBox::indicator:unchecked { background-color: #E2E8F0; }
+QCheckBox::indicator:checked { background-color: #4F46E5; border: 1px solid #4F46E5; }

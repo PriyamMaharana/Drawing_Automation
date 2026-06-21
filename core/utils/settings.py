@@ -6,7 +6,8 @@ class PlatformSettings:
     Single Source of Truth for all rendering and extraction resolutions.
     """
     PDF_BASE_DPI: float = 72.0 
-    UI_RENDER_DPI: int = 300 
+    UI_RENDER_DPI: int = 144
+    NATIVE_EXTRACTION_DPI = 300
     OCR_EXTRACTION_DPI: int = 600 
     EXPORT_RENDER_DPI: int = 300 
 

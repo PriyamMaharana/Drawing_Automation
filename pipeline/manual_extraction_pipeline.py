@@ -8,7 +8,7 @@ from core.utils.settings import PlatformSettings
 logger = logging.getLogger(__name__)
 
 try: 
-    from infrastructure.ocr.image_processor import ImageProcessor
+    from infrastructure.ocr.image_processor import ImageProcessor2
     from infrastructure.ocr.hybrid_engine import HybridEngine
     from services.dimension_service import DimensionService
     from services.ballooning_service import BallooningService
@@ -25,12 +25,12 @@ class ManualExtractionPipeline:
         self.res_dir = self.project_root / "debug" / "results" / "manual_extract"
         self.res_dir.mkdir(parents=True, exist_ok=True)
         
-        self.image_processor = ImageProcessor()
+        self.image_processor = ImageProcessor2()
         self.tesseract = TesseractEngine()
         self.hybrid_engine = HybridEngine()
         self.dimension_service = DimensionService()
         self.balloon_service = BallooningService(start_index=1)
-        self.render = BalloonRenderer(self.res_dir, render_dpi=PlatformSettings.EXPORT_RENDER_DPI)
+        self.render = BalloonRenderer(self.res_dir)
         template_path = self.project_root / "resources" / "excel_templates" / "Excel_Format.xlsx"
         self.excel_service = ExcelExportService(template_path, self.res_dir)
 
@@ -74,15 +74,13 @@ class ManualExtractionPipeline:
         if hasattr(self, 'balloon_service'):
             self.balloon_service.apply_balloons(master_intelligence)
             
-        full_page_pix = page.get_pixmap(dpi=PlatformSettings.EXPORT_RENDER_DPI, colorspace=fitz.csRGB, alpha=False)
-        
         if hasattr(self, 'renderer'):
-            self.renderer.render_fai_page(pdf_path.name, full_page_pix.tobytes("png"), master_intelligence)
+            self.renderer.render_fai_page(pdf_path, page_num, master_intelligence)
             
         if hasattr(self, 'excel_service'):
             self.excel_service.generate_inspection_report(pdf_path.name, master_intelligence)
         
-        with open(self.res_dir / f"{pdf_path.stem}_DATA_DUMP.json", "w") as f:
+        with open(self.res_dir / f"temp_data_dump.json", "w") as f:
             json.dump(master_intelligence, f, indent=4)
 
         doc.close()

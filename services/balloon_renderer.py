@@ -1,90 +1,75 @@
-import cv2
 import logging
 import math
 import fitz
-import numpy as np
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 class BalloonRenderer:
-    def __init__(self, output_dir: Path, render_dpi: int = 400):
+    def __init__(self, output_dir: Path):
         self.output_dir = output_dir
-        self.render_dpi = render_dpi
 
-    def render_fai_page(self, filename: str, full_page_bytes: bytes, intelligence: list):
-        logger.info(f"Rendering Visual Balloon Page for {filename}...")
+    def render_fai_page(self, source_pdf_path: Path, page_num: int, intelligence: list):
+        logger.info(f"Rendering Native Vector Balloon Page for {source_pdf_path.name}...")
         
-        nparr = np.frombuffer(full_page_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None: 
-            logger.error(f"Failed to decode image buffer for {filename}")
-            return
-
-        scale = self.render_dpi / 72.0
-        radius = 26 
-        thickness = 3
+        doc = fitz.open(str(source_pdf_path))
+        page = doc[page_num - 1]
+        
+        # Native PDF points (72 per inch). No resolution scaling needed!
+        radius = 12 
+        drawn_count = 0
                 
         for view in intelligence:
             for dim in view.get("dimensions", []):
                 b_id = str(dim.get("balloon_id", ""))
                 bbox = dim.get("bounding_box_pdf", [0,0,0,0])
                 
-                # 1. Target Point & Balloon Center Offset
-                target_x = int(bbox[0] * scale) - 5
-                target_y = int(((bbox[1] + bbox[3]) / 2) * scale)
+                # 1. Target Point (Left center of the bounding box)
+                target_x = bbox[0] - 2
+                target_y = (bbox[1] + bbox[3]) / 2
 
-                center_x = target_x - 80 
-                center_y = target_y - 60
+                # 2. Balloon Center Offset (Push up and left by ~25 points)
+                center_x = max(target_x - 25, radius + 2)
+                center_y = max(target_y - 25, radius + 2)
 
-                # Safety: Prevent the balloon from drawing off the edge of the paper
-                center_x = max(center_x, radius + 5)
-                center_y = max(center_y, radius + 5)
+                # 3. Draw Native Vector Circle Annotation
+                rect = fitz.Rect(center_x - radius, center_y - radius, center_x + radius, center_y + radius)
+                circle_annot = page.add_circle_annot(rect)
+                circle_annot.set_colors(stroke=(1, 0, 0)) # Pure Red
+                circle_annot.set_border(width=1.5)
+                circle_annot.update()
 
-                # 2. Draw Transparent Balloon & Text
-                cv2.circle(img, (center_x, center_y), radius, (0, 0, 255), thickness) 
+                # 4. Draw Native Vector Text
+                font_size = 10
+                text_w = fitz.get_text_length(b_id, fontname="helv", fontsize=font_size)
+                # Perfect center alignment math
+                text_rect = fitz.Rect(center_x - text_w/2, center_y - font_size/2 - 1, center_x + text_w/2 + 2, center_y + font_size/2 + 1)
+                
+                text_annot = page.add_freetext_annot(text_rect, b_id, fontsize=font_size, fontname="helv", text_color=(1, 0, 0))
+                text_annot.set_border(width=0) 
+                text_annot.update()
 
-                text_size = cv2.getTextSize(b_id, cv2.FONT_HERSHEY_SIMPLEX, 0.9, thickness)[0]
-                text_x = center_x - (text_size[0] // 2)
-                text_y = center_y + (text_size[1] // 2)
-                cv2.putText(img, b_id, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), thickness)
-
-                # 3. Trigonometry for the Leader Line Arrow
-                if not (target_x == center_x and target_y == center_y):
+                # 5. Draw Native Vector Leader Line (Arrow)
+                if target_x != center_x or target_y != center_y:
                     angle = math.atan2(target_y - center_y, target_x - center_x)
-                    arrow_start_x = int(center_x + radius * math.cos(angle))
-                    arrow_start_y = int(center_y + radius * math.sin(angle))
+                    start_x = center_x + radius * math.cos(angle)
+                    start_y = center_y + radius * math.sin(angle)
 
-                    cv2.arrowedLine(
-                        img, 
-                        (arrow_start_x, arrow_start_y), 
-                        (target_x, target_y), 
-                        (0, 0, 255), 
-                        thickness, 
-                        tipLength=0.15
-                    )
+                    line_annot = page.add_line_annot(fitz.Point(start_x, start_y), fitz.Point(target_x, target_y))
+                    line_annot.set_line_ends(fitz.PDF_ANNOT_LE_NONE, fitz.PDF_ANNOT_LE_OPEN_ARROW)
+                    line_annot.set_colors(stroke=(1, 0, 0))
+                    line_annot.set_border(width=1.0)
+                    line_annot.update()
                     
-                logger.info(f"🎈 Placed Balloon #{b_id} for text '{dim.get('raw_text', '')}'")
+                logger.debug(f"🎈 Placed Vector Balloon #{b_id} for text '{dim.get('raw_text', '')}'")
                 drawn_count += 1
+        
+        if drawn_count == 0:
+            logger.warning("⚠️ Zero balloons were drawn! The extractor passed an empty list.")
                 
-        out_path = self.output_dir / f"{filename.replace('.pdf', '')}_BALLOONED.png"
-        cv2.imwrite(str(out_path), img)
-        logger.info(f"🎨 FAI Blueprint Rendered: {out_path.name}")
-                
-        # out_path = self.output_dir / f"{filename.replace('.pdf', '')}_BALLOONED.pdf"
-        # success, buffer = cv2.imencode('.png', img)
+        # Save as a brand new PDF file (A copy of the original)
+        out_path = self.output_dir / f"{source_pdf_path.stem}_BALLOONED.pdf"
+        doc.save(str(out_path))
+        doc.close()
         
-        # if success:
-        #     img_doc = fitz.open("png", buffer.tobytes())
-        #     pdf_bytes = img_doc.convert_to_pdf()
-        #     pdf_doc = fitz.open("pdf", pdf_bytes)
-            
-        #     pdf_doc.save(str(out_path))
-        #     pdf_doc.close()
-        #     img_doc.close()
-            
-        #     logger.info(f"🎨 FAI Blueprint Rendered: {out_path.name}")
-        # else:
-        #     logger.error("Failed to encode OpenCV canvas for PDF generation.")
-        
-        
+        logger.info(f"🎨 Native Vector FAI Blueprint Rendered: {out_path.name}")

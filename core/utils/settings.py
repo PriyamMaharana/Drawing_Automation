@@ -10,8 +10,8 @@ class PlatformSettings:
     NATIVE_EXTRACTION_DPI = 300
     OCR_EXTRACTION_DPI: int = 600 
     EXPORT_RENDER_DPI: int = 300 
-
-    OCR_MIN_CONFIDENCE: int = 10
+    BALLOON_RENDER_DPI: int = 400
+    OCR_MIN_CONFIDENCE: int = 30
     
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
     TESSERACT_CMD: Path = BASE_DIR / "bin" / "Tesseract-OCR" / "tesseract.exe"

@@ -52,6 +52,7 @@ class OCRAutoCorrect:
     @classmethod
     def clean_text(cls, raw_text: str) -> str:
         if not raw_text:
+            
             return ""
             
         cleaned = raw_text.strip()

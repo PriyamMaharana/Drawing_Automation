@@ -4,7 +4,7 @@
 
 </div>
 
-> **Version:** 2.0 (Ghost Canvas Architecture) &nbsp;|&nbsp; **Platform:** Windows Desktop &nbsp;|&nbsp; **Technology:** Python + PySide6
+> **Version:** 2.0 (Ghost Canvas Architecture) &nbsp;|&nbsp; **Platform:** Windows Desktop &nbsp;|&nbsp; **Technology:** Python + PySide6 **Icons:** Lucid.dev
 
 An enterprise-grade, fully offline desktop application that automates the extraction of critical engineering parameters — dimensions, tolerances, notes, and metadata — from complex PDF engineering drawings. Utilizing a Non-Destructive Spatial-Text Pipeline, it intelligently isolates manufacturing geometry from structured tabular data to eliminate manual effort, human error, and inconsistency in generating inspection-ready Excel sheets.
 

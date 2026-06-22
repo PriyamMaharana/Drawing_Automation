@@ -1,8 +1,23 @@
 import re
 
 class CADSignatures:
-    SYMBOLS = re.compile(r'[\Ø\±\°\⌀\⌖\↗\⌰\⟂\∥\∠\▱\⌭\⌓\⌒\Ⓜ\Ⓛ\Ⓢ\⌯\◎\─\○]')
-    KEYWORDS = re.compile(r'\b(PCD|THRU|TYP|CHAM|CBORE|CSK|REF|MAX|MIN|SPLINE|ASSY)\b', re.IGNORECASE)
+    # Expanded GD&T Symbols, Material Modifiers, and Feature Symbols
+    GDT_SYMBOLS = [
+        '⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌰', '⌭', '⌯', '▱', '⌓', '⌢', '⌒', '─', '○', '◯',
+        'Ⓜ', 'Ⓛ', 'Ⓢ', 'Ⓟ', 'Ⓣ', 'Ⓕ', 'Ⓤ', 
+        '⌴', '⌵', '↧'
+    ]
+
+    # Standard Engineering Callout Keywords (Suffixes & Modifiers)
+    KEYWORDS_LIST = [
+        r'THRU', r'TYP', r'MIN', r'MAX', r'REF', r'PCD', 
+        r'EQL\s*SP', r'DP', r'DEEP', r'CSK', r'CBORE', 
+        r'CHAM', r'SPLINE', r'ASSY', r'BSC'
+    ]
+
+    # Legacy compiled regexes (kept for compatibility with older extraction modules)
+    SYMBOLS = re.compile(r'[' + re.escape(''.join(GDT_SYMBOLS)) + r']')
+    KEYWORDS = re.compile(r'\b(' + '|'.join(KEYWORDS_LIST).replace(r'\s*', r'\s') + r')\b')
     DIMENSIONS = re.compile(r'\b[RNMHhgkp]\d{1,3}\b')
     TOLERANCES = re.compile(r'[+-]\s?\d*\.\d+')
 
@@ -21,5 +36,3 @@ class PaperSizeSignatures:
         "A1": r"size\s*A1", 
         "A2": r"size\s*A2"
     }
-    
-    

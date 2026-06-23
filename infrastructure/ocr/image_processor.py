@@ -31,8 +31,28 @@ DEBUG_DIR = PROJECT_ROOT / "debug" / "crops"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
    
     
-class ImageProcessor2:
+class ImageProcessor:
+    
+    def enhance_for_ocr(self, img_array: np.ndarray, debug_path: str = None) -> np.ndarray:
+        if len(img_array.shape) == 3 and img_array.shape[2] == 3:
+            gray_img = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+        elif len(img_array.shape) == 3 and img_array.shape[2] == 4:
+            gray_img = cv2.cvtColor(img_array, cv2.COLOR_BGRA2GRAY)
+        else:
+            gray_img = img_array
+            
+        _, binary_img = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        if debug_path:
+            cv2.imwrite(debug_path, binary_img)
+            
+        return binary_img
+
     def standardize_for_ocr(self, img_bytes: bytes, debug_path: str = None) -> np.ndarray:
+        """
+        LEGACY PATH: Kept for backwards compatibility with older pipelines 
+        that pass raw image bytes.
+        """
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         _, binary_img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -41,4 +61,3 @@ class ImageProcessor2:
             cv2.imwrite(debug_path, binary_img)
             
         return binary_img
-

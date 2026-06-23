@@ -15,8 +15,8 @@ class BalloonRenderer:
         self.output_dir = output_dir
         self.balloon_render = balloon_render
 
-    def render_fai_page(self, source_pdf_path: Path, page_num: int, intelligence: list) -> Path:
-        logger.info(f"Rendering Balloon Page for {source_pdf_path.name}...")
+    def render_fai_page(self, source_pdf_path: Path, page_num: int, intelligence: list, debug_mode: bool = False) -> Path:
+        logger.info(f"Rendering Page for {source_pdf_path.name} | Debug Mode: {debug_mode}")
         
         doc = fitz.open(str(source_pdf_path))
         page = doc[page_num - 1]
@@ -29,6 +29,17 @@ class BalloonRenderer:
                 b_id = str(dim.get("balloon_id", ""))
                 bbox = dim.get("bounding_box_pdf", [0,0,0,0])
                 
+                if debug_mode:
+                    rect = fitz.Rect(bbox[0], bbox[1], bbox[2], bbox[3])
+                    rect_annot = page.add_rect_annot(rect)
+                    rect_annot.set_colors(stroke=(0, 0, 1)) # Solid Blue
+                    rect_annot.set_border(width=0.5)        # Thin Line
+                    rect_annot.update()
+                    
+                    logger.debug(f"🟦 Drew Debug Box for text '{dim.get('raw_text', '')}'")
+                    drawn_count += 1
+                    continue
+                
                 target_x = bbox[0] - 2
                 target_y = (bbox[1] + bbox[3]) / 2
                 
@@ -38,15 +49,12 @@ class BalloonRenderer:
                 center_x, center_y = target_x, target_y
                 
                 while not placed:
-                    # Propose a new center coordinate
                     prop_x = target_x + distance * math.cos(angle_offset)
                     prop_y = target_y + distance * math.sin(angle_offset)
 
-                    # Boundary Safety (Prevent balloon from rendering off the page)
                     prop_x = max(prop_x, radius + 2)
                     prop_y = max(prop_y, radius + 2)
 
-                    # Check for collisions with existing balloons
                     collision = False
                     for (ox, oy) in occupied_centers:
                         if math.hypot(prop_x - ox, prop_y - oy) < (radius * 2 + 5):
@@ -54,12 +62,10 @@ class BalloonRenderer:
                             break
                             
                     if not collision:
-                        # Clear space found! Register and lock it in.
                         center_x, center_y = prop_x, prop_y
                         occupied_centers.append((center_x, center_y))
                         placed = True
                     else:
-                        # Spiral outward and try again
                         angle_offset += 0.4 
                         distance += 3 
 

@@ -24,7 +24,7 @@ class TesseractEngine:
     def extract_text(self, image: np.ndarray) -> list:
         results = []
         
-        whitelist = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-+()[]Ø±°⌀⌖↗⌰⟂∥∠▱⌭⌓⌒ⓂⓁⓈ⌯◎─○'
+        whitelist = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-+()[]Ø±°⌀⌖↗⌰⟂∥∠▱⌭⌓⌒ⓂⓁⓈ⌯◎─○⌴⌵↧'
         custom_config = f'--oem 3 --psm 11 -c tessedit_char_whitelist="{whitelist}"'
 
         try:

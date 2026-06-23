@@ -4,11 +4,11 @@ import logging
 from pathlib import Path
 from typing import List
 
-logger = logging.getLogger(__name__)
+from core.utils.logger import setup_3_tier_logging
 
 try: 
     from core.utils.settings import PlatformSettings
-    from infrastructure.ocr.image_processor import ImageProcessor2
+    from infrastructure.ocr.image_processor import ImageProcessor
     from infrastructure.ocr.hybrid_engine import HybridEngine
     from services.dimension_service import DimensionService
     from services.ballooning_service import BallooningService
@@ -16,29 +16,33 @@ try:
     from services.excel_export_service import ExcelExportService
     from infrastructure.ocr.tesseract_engine import TesseractEngine
 except ImportError as e:
-    logging.error(f"Microservices import failure: {e}")
+    print(f"Microservices import failure: {e}")
     raise
 
 class ManualExtractionPipeline:
     def __init__(self, project_root: Path):
-        self.project_root = project_root
+        self.project_root = Path(project_root)
         self.res_dir = self.project_root / "debug" / "results" / "manual_extract"
         self.res_dir.mkdir(parents=True, exist_ok=True)
         
-        self.image_processor = ImageProcessor2()
+        self.image_processor = ImageProcessor()
         self.tesseract = TesseractEngine()
         self.hybrid_engine = HybridEngine()
         self.dimension_service = DimensionService()
         self.balloon_service = BallooningService(start_index=1)
-        self.renderer = BalloonRenderer(self.res_dir)
+        self.renderer = BalloonRenderer(self.res_dir, balloon_render=300)
         self.excel_service = ExcelExportService(self.res_dir)
 
-    def execute(self, pdf_path: Path, page_num: int, green_zone_px: List[List[int]]):
-        logger.info(f"Igniting Manual Extraction for {len(green_zone_px)} zones on {pdf_path.name}...")
+    def execute(self, pdf_path: Path, page_num: int, green_zone_px: List[List[int]], debug_mode: bool = True):
+        setup_3_tier_logging("manual_extraction", self.project_root)
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Igniting Manual Extraction Pipeline for {pdf_path.name}")
+        logger.debug(f"Targeting {len(green_zone_px)} user-selected Green Zones on Page {page_num}.")
         
         doc = fitz.open(str(pdf_path))
         page = doc[page_num - 1]
-        scale = PlatformSettings.PDF_BASE_DPI / PlatformSettings.UI_RENDER_DPI
+        scale = getattr(PlatformSettings, 'PDF_BASE_DPI', 72) / getattr(PlatformSettings, 'UI_RENDER_DPI', 144)
         master_intelligence = []
         
         for idx, zone_px in enumerate(green_zone_px):
@@ -57,7 +61,9 @@ class ManualExtractionPipeline:
                     ocr_engine=getattr(self, 'tesseract', None),
                     debug_path=debug_crop_path
                 )
-            else: continue
+            else: 
+                logger.error("Hybrid Engine not initialized! Skipping text extraction.")
+                continue
 
             try:
                 from core.entities.drawing_view import DrawingView
@@ -75,33 +81,35 @@ class ManualExtractionPipeline:
          
         preview_pdf_path = None   
         if hasattr(self, 'renderer'):
-            preview_pdf_path = self.renderer.render_fai_page(pdf_path, page_num, master_intelligence)
+            preview_pdf_path = self.renderer.render_fai_page(pdf_path, page_num, master_intelligence, debug_mode=debug_mode)
             
         if hasattr(self, 'excel_service'):
             self.excel_service.generate_inspection_report(pdf_path.name, master_intelligence)
         
+        logger.debug("Dumping raw schema to Temp file.")
         with open(self.res_dir / f"temp_data_dump.json", "w") as f:
             json.dump(master_intelligence, f, indent=4)
 
         doc.close()
+        logger.info("Manual Extraction Pipeline completed successfully.")
         return master_intelligence, preview_pdf_path
 
-    def _unify_text(self, native_blocks, ocr_lines, clip_rect, ocr_dpi):
-        unified = []
-        for b in native_blocks:
-            if b.get("type") == 0:
-                for line in b.get("lines", []):
-                    text = "".join([span["text"] for span in line["spans"]])
-                    unified.append({"text": text.strip(), "bbox": line["bbox"]})
+    # def _unify_text(self, native_blocks, ocr_lines, clip_rect, ocr_dpi):
+    #     unified = []
+    #     for b in native_blocks:
+    #         if b.get("type") == 0:
+    #             for line in b.get("lines", []):
+    #                 text = "".join([span["text"] for span in line["spans"]])
+    #                 unified.append({"text": text.strip(), "bbox": line["bbox"]})
         
-        scale = 72.0 / ocr_dpi
-        for line in ocr_lines:
-            bx0 = clip_rect.x0 + (line["bbox"][0] * scale)
-            by0 = clip_rect.y0 + (line["bbox"][1] * scale)
-            bx1 = clip_rect.x0 + (line["bbox"][2] * scale)
-            by1 = clip_rect.y0 + (line["bbox"][3] * scale)
-            unified.append({"text": line["text"], "bbox": [bx0, by0, bx1, by1]})
+    #     scale = 72.0 / ocr_dpi
+    #     for line in ocr_lines:
+    #         bx0 = clip_rect.x0 + (line["bbox"][0] * scale)
+    #         by0 = clip_rect.y0 + (line["bbox"][1] * scale)
+    #         bx1 = clip_rect.x0 + (line["bbox"][2] * scale)
+    #         by1 = clip_rect.y0 + (line["bbox"][3] * scale)
+    #         unified.append({"text": line["text"], "bbox": [bx0, by0, bx1, by1]})
             
-        return unified
+    #     return unified
     
     

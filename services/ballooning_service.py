@@ -10,11 +10,15 @@ class BallooningService:
     def apply_balloons(self, intelligence: list) -> int:
         logger.info("Applying AS9102 FAI Balloons to extracted features...")
         count = 0
+        
         for view in intelligence:
             for dim in view.get("dimensions", []):
                 dim["balloon_id"] = self.current_id
+                logger.debug(f"Assigned Balloon ID [{self.current_id}] to feature: '{dim.get('raw_text', '')}'")
                 self.current_id += 1
                 count += 1
+                
+        logger.info(f"Successfully generated {count} continuous inspection balloons.")
         return count
     
     

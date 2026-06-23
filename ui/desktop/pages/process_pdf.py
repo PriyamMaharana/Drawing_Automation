@@ -5,15 +5,8 @@ import os
 import logging
 from pathlib import Path
 
-try:
-    from config.icon_library import Ico, IconLibrary
-except ImportError as e:
-    logging.error(f"Microservices import failure: {e}")
-    raise
-
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", ".."))
-
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -21,420 +14,461 @@ logger = logging.getLogger(__name__)
 
 from PySide6.QtWidgets import (QWidget, QGraphicsView, QGraphicsScene, QGraphicsRectItem, 
                                QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, 
-                               QLabel, QComboBox, QMessageBox, QMenu, QApplication)
+                               QLabel, QComboBox, QMessageBox, QMenu, QApplication,
+                               QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QFrame)
 from PySide6.QtGui import QPixmap, QImage, QPen, QColor, QPainter, QAction
 from PySide6.QtCore import Qt, QRectF, QTimer, QSize
 
+try:
+    from config.icon_library import Ico, IconLibrary
+except ImportError:
+    pass
+
+# =========================================================================
+# 1. THE INTERACTIVE REVIEW PANEL
+# =========================================================================
+class ReviewPanel(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(400)
+        self.setStyleSheet("QFrame { background-color: #F8FAFC; border-left: 1px solid #DEE2E6; }")
+        
+        layout = QVBoxLayout(self)
+        
+        title = QLabel("🔍 Interactive Data Review")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #007BFF; padding: 10px 0;")
+        layout.addWidget(title)
+        
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["ID", "Specification", "Tolerance"])
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.setColumnWidth(0, 40)
+        self.table.setColumnWidth(2, 80)
+        self.table.setStyleSheet("""
+            QTableWidget { background-color: white; border: 1px solid #DEE2E6; border-radius: 4px; }
+            QHeaderView::section { background-color: #E9ECEF; font-weight: bold; border: none; }
+        """)
+        layout.addWidget(self.table)
+        
+        btn_layout = QHBoxLayout()
+        self.btn_del = QPushButton("🗑️ Delete Selected Row")
+        self.btn_del.setStyleSheet("background-color: #FFE1E1; color: #D32F2F; padding: 8px; border-radius: 4px;")
+        btn_layout.addWidget(self.btn_del)
+        layout.addLayout(btn_layout)
+        
+        # Helper text for drawing manual boxes
+        helper = QLabel("Tip: Draw directly on the canvas to add missing data!")
+        helper.setStyleSheet("color: #6C757D; font-size: 11px; font-style: italic;")
+        helper.setAlignment(Qt.AlignCenter)
+        layout.addWidget(helper)
+
+        self.btn_finalize = QPushButton("✅ Finalize & Export Report")
+        self.btn_finalize.setStyleSheet("""
+            QPushButton { background-color: #28A745; color: white; font-weight: bold; padding: 12px; border-radius: 6px; }
+            QPushButton:hover { background-color: #218838; }
+        """)
+        layout.addWidget(self.btn_finalize)
+        self.hide()
+
+
+# =========================================================================
+# 2. THE DYNAMIC CANVAS (Supports Green Zones & Blue Debug Zones)
+# =========================================================================
 class GreenZoneCanvas(QGraphicsView):
     def __init__(self, scene, parent_page):
         super().__init__(scene)
-        logger.debug("Initializing GreenZoneCanvas...")
         self.parent_page = parent_page 
         self.setDragMode(QGraphicsView.NoDrag) 
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.rect_items = [] 
-        self.active_rect_item = None
-        self.start_point = None
-        self.drawing_mode = False
-        self.current_view_scale = 1.0
-        self.zoom_timer = QTimer()
-        self.zoom_timer.setSingleShot(True)
-        self.zoom_timer.timeout.connect(self.trigger_high_res_render)
-        logger.debug("GreenZoneCanvas initialization complete.")
-
-    def explicit_zoom(self, factor):
-        logger.debug(f"Explicit zoom triggered. Factor: {factor}")
-        self.scale(factor, factor)
-        self.current_view_scale *= factor
-        self.zoom_timer.start(300) 
-
-    def explicit_pan(self, dx, dy):
-        logger.debug(f"Explicit pan triggered. DX: {dx}, DY: {dy}")
-        h_bar = self.horizontalScrollBar()
-        v_bar = self.verticalScrollBar()
-        h_bar.setValue(h_bar.value() + dx)
-        v_bar.setValue(v_bar.value() + dy)
-
-    def wheelEvent(self, event):
-        is_preview = getattr(self.parent_page, 'is_preview_mode', False)
-        if event.modifiers() == Qt.ShiftModifier or is_preview:
-            zoom_in = 1.15
-            zoom_out = 1.0 / zoom_in
-            old_pos = self.mapToScene(event.position().toPoint())
-            if event.angleDelta().y() > 0:
-                self.scale(zoom_in, zoom_in)
-                self.current_view_scale *= zoom_in
-                logger.debug(f"Mouse wheel zoomed IN. Current scale: {self.current_view_scale}")
-            else:
-                self.scale(zoom_out, zoom_out)
-                self.current_view_scale *= zoom_out
-                logger.debug(f"Mouse wheel zoomed OUT. Current scale: {self.current_view_scale}")
-            delta = self.mapToScene(event.position().toPoint()) - old_pos
-            self.translate(delta.x(), delta.y())
-            self.zoom_timer.start(300) 
-            event.accept() # Prevent default vertical scrolling
-        else:
-            super().wheelEvent(event)
-
-    def trigger_high_res_render(self):
-        logger.debug("Zoom timer finished. Triggering high-res PyMuPDF render.")
-        self.parent_page.re_render_hd_pdf(self.current_view_scale)
-
-    def mousePressEvent(self, event):
-        is_preview = getattr(self.parent_page, 'is_preview_mode', False)
-        if event.button() == Qt.LeftButton:
-            if event.modifiers() == Qt.ShiftModifier or is_preview:
-                logger.debug("Mouse pressed: Initiating Hand Drag mode.")
-                self.setDragMode(QGraphicsView.ScrollHandDrag)
-                super().mousePressEvent(event)
-            else:
-                logger.debug("Mouse pressed: Initiating Green Zone drawing mode.")
-                self.setDragMode(QGraphicsView.NoDrag)
-                self.drawing_mode = True
-                self.start_point = self.mapToScene(event.position().toPoint())
-                self.active_rect_item = QGraphicsRectItem()
-                pen = QPen(QColor(0, 200, 0)) 
-                pen.setWidth(4) 
-                pen.setCosmetic(True) 
-                self.active_rect_item.setPen(pen)
-                self.scene().addItem(self.active_rect_item)
-                self.rect_items.append(self.active_rect_item)
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        try:
-            if self.drawing_mode and self.start_point and self.active_rect_item:
-                rect = QRectF(self.start_point, self.mapToScene(event.position().toPoint())).normalized()
-                self.active_rect_item.setRect(rect)
-            else:
-                super().mouseMoveEvent(event)
-        except RuntimeError:
-            logger.error(f"Runtime error during mouse move (Drawing Mode): {e}")
-            self.drawing_mode = False
-            self.active_rect_item = None
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            if self.drawing_mode: 
-                logger.debug("Mouse released: Green Zone drawn.")
-                self.drawing_mode, self.start_point = False, None
-            else:
-                super().mouseReleaseEvent(event)
-                is_preview = getattr(self.parent_page, 'is_preview_mode', False)
-                if not is_preview:
-                    self.setDragMode(QGraphicsView.NoDrag)
-        else:
-            super().mouseReleaseEvent(event)
-
-    def clear_all_zones(self):
-        logger.info(f"Clearing {len(self.rect_items)} Green Zones from canvas.")
-        for item in self.rect_items:
-            try: self.scene().removeItem(item)
-            except RuntimeError: pass
-        self.rect_items.clear()
+        self.current_rect = None
+        self.start_pos = None
+        self.is_preview_mode = False
 
     def get_selected_zones(self):
         zones = []
         for item in self.rect_items:
-            try:
-                rect = item.rect()
-                if rect.width() > 10 and rect.height() > 10:
-                    zones.append([int(rect.left()), int(rect.top()), int(rect.right()), int(rect.bottom())])
-            except RuntimeError: 
-                logger.error(f"Failed to read a rectangle item: {e}")
-                continue
-        logger.info(f"Captured {len(zones)} valid Green Zones for extraction.")
+            rect = item.sceneBoundingRect()
+            zones.append([int(rect.left()), int(rect.top()), int(rect.right()), int(rect.bottom())])
         return zones
 
+    def clear_all_rects(self):
+        for item in self.rect_items:
+            self.scene().removeItem(item)
+        self.rect_items.clear()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            # If clicking an existing movable item (like resizing a blue box), let the system handle it
+            item = self.itemAt(event.pos())
+            if item and item.flags() & QGraphicsRectItem.ItemIsSelectable:
+                super().mousePressEvent(event)
+                return
+            
+            # Otherwise, start drawing a new box
+            self.start_pos = self.mapToScene(event.position().toPoint())
+            self.current_rect = QGraphicsRectItem()
+            
+            if self.is_preview_mode:
+                pen_color, brush_color = QColor(0, 0, 255), QColor(0, 0, 255, 30) # Blue Debug Box
+            else:
+                pen_color, brush_color = QColor(0, 255, 0), QColor(0, 255, 0, 50) # Green Extract Zone
+                
+            self.current_rect.setPen(QPen(pen_color, 2, Qt.SolidLine))
+            self.current_rect.setBrush(brush_color)
+            self.scene().addItem(self.current_rect)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.start_pos and self.current_rect:
+            end_pos = self.mapToScene(event.position().toPoint())
+            rect = QRectF(self.start_pos, end_pos).normalized()
+            self.current_rect.setRect(rect)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.current_rect:
+            rect = self.current_rect.rect()
+            if rect.width() > 10 and rect.height() > 10:
+                self.rect_items.append(self.current_rect)
+                if self.is_preview_mode:
+                    self.current_rect.setFlag(QGraphicsRectItem.ItemIsSelectable, True)
+                    self.current_rect.setFlag(QGraphicsRectItem.ItemIsMovable, True)
+                    # Automatically add this new box to the review table!
+                    self.parent_page.add_manual_box_to_table(self.current_rect)
+            else:
+                self.scene().removeItem(self.current_rect)
+            self.current_rect = None
+            self.start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+            for item in self.scene().selectedItems():
+                if item in self.rect_items:
+                    self.rect_items.remove(item)
+                    self.scene().removeItem(item)
+                    if self.is_preview_mode:
+                        # Automatically delete from the review table!
+                        self.parent_page.remove_box_from_table(getattr(item, 'dim_ref', None))
+        super().keyPressEvent(event)
+
+
+# =========================================================================
+# 3. THE MAIN PAGE CONTROLLER
+# =========================================================================
 class ExtractionPage(QWidget):
     def __init__(self):
         super().__init__()
-        logger.info("Initializing ExtractionPage UI Module...")
-        self.is_preview_mode = False
-        layout = QVBoxLayout(self)
+        self.original_pdf_path = None
+        self.current_pdf_path = None
+        self.current_page_idx = 0
+        self.master_intelligence = []
+        
+        master_layout = QHBoxLayout(self)
+        master_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Left Panel (Toolbar + Canvas)
+        self.left_panel = QWidget()
+        layout = QVBoxLayout(self.left_panel)
 
         # Primary Tools
         self.primary_tools = QWidget()
-        primary_layout = QHBoxLayout(self.primary_tools)
-        primary_layout.setContentsMargins(0,0,0,0)
-
-        self.btn_load = QPushButton(" Load Engineering PDF")
-        self.btn_load.setIcon(IconLibrary.get(Ico.FOLDER))
+        tool_layout = QHBoxLayout(self.primary_tools)
+        self.btn_load = QPushButton(" 📂 Load Blueprint")
         self.btn_load.clicked.connect(self.load_pdf)
-        
-        self.page_selector = QComboBox()
-        self.page_selector.currentIndexChanged.connect(self.change_page)
-        self.page_selector.hide() 
-        
-        self.btn_clear = QPushButton(" Clear Zones")
-        self.btn_clear.setIcon(IconLibrary.get(Ico.CLEAR))
-        self.btn_clear.setStyleSheet("QPushButton { background-color: #DC3545; color: white; border: none; } QPushButton:hover { background-color: #C82333; }")
-        self.btn_clear.clicked.connect(lambda: self.canvas.clear_all_zones())
-        
-        primary_layout.addWidget(self.btn_load, stretch=3)
-        primary_layout.addWidget(self.page_selector, stretch=1)
-        primary_layout.addWidget(self.btn_clear, stretch=1)
+        tool_layout.addWidget(self.btn_load)
         layout.addWidget(self.primary_tools)
 
-        self.btn_extract = QPushButton(" Extract Selected Green Zones")
-        self.btn_extract.setStyleSheet("background-color: #28A745; color: white; border: none;")
-        self.btn_extract.clicked.connect(self.trigger_extraction)
-        self.btn_extract.setEnabled(False)
-        layout.addWidget(self.btn_extract)
-
-        # Preview Tools
+        # Export Tools (Hidden by default)
         self.export_tools = QWidget()
-        export_layout = QVBoxLayout(self.export_tools)
-        export_layout.setContentsMargins(0,0,0,0)
-        
-        nav_row = QWidget()
-        nav_layout = QHBoxLayout(nav_row)
-        nav_layout.setContentsMargins(0,0,0,0)
-        
-        lbl_preview = QLabel("🔍 PREVIEW MODE:")
-        lbl_preview.setStyleSheet("font-size: 15px; color: #D35400; font-weight: bold;")
-        nav_layout.addWidget(lbl_preview, stretch=1)
-        
-        nav_btn_style = "QPushButton { background-color: #E9ECEF; color: #212529; border: 1px solid #CED4DA; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 13px;} QPushButton:hover { background-color: #DEE2E6; }"
-        self.btn_z_in = QPushButton("➕ Zoom In")
-        # self.btn_z_in.setIcon(IconLibrary.get(Ico.PLUS))
-        self.btn_z_out = QPushButton("➖ Zoom Out")
-        self.btn_up = QPushButton("⬆️ Up")
-        self.btn_down = QPushButton("⬇️ Down")
-        self.btn_left = QPushButton("⬅️ Left")
-        self.btn_right = QPushButton("➡️ Right")
-
-        for btn in [self.btn_z_in, self.btn_z_out, self.btn_up, self.btn_down, self.btn_left, self.btn_right]:
-            btn.setStyleSheet(nav_btn_style)
-            nav_layout.addWidget(btn)
-
-        self.btn_z_in.clicked.connect(lambda: self.canvas.explicit_zoom(1.15))
-        self.btn_z_out.clicked.connect(lambda: self.canvas.explicit_zoom(1/1.15))
-        self.btn_up.clicked.connect(lambda: self.canvas.explicit_pan(0, -150))
-        self.btn_down.clicked.connect(lambda: self.canvas.explicit_pan(0, 150))
-        self.btn_left.clicked.connect(lambda: self.canvas.explicit_pan(-150, 0))
-        self.btn_right.clicked.connect(lambda: self.canvas.explicit_pan(150, 0))
-
-        action_row = QWidget()
-        action_layout = QHBoxLayout(action_row)
-        action_layout.setContentsMargins(0, 10, 0, 0)
-        
-        self.btn_approve = QPushButton(" Export Report ▾")
-        self.btn_approve.setIcon(IconLibrary.get(Ico.CIRCLE_CHECK_BIG))
-        self.btn_approve.setStyleSheet("QPushButton { background-color: #007BFF; color: white; border: none; } QPushButton:hover { background-color: #0069D9; } QPushButton::menu-indicator { image: none; width: 0px; }")
-        
-        self.export_menu = QMenu(self)
-        self.export_menu.setStyleSheet("QMenu { background-color: #FFFFFF; border: 1px solid #CED4DA; border-radius: 4px; } QMenu::item { padding: 8px 24px; color: #212529; font-size: 14px; font-weight: bold; } QMenu::item:selected { background-color: #007BFF; color: white; }")
-        
-        action_pdf = QAction("📄 Export as PDF", self)
-        action_pdf.triggered.connect(lambda: self.export_drawing(".pdf"))
-        action_jpg = QAction("🖼️ Export as JPEG", self)
-        action_jpg.triggered.connect(lambda: self.export_drawing(".jpeg"))
-        action_png = QAction("🖼️ Export as PNG", self)
-        action_png.triggered.connect(lambda: self.export_drawing(".png"))
-        
-        self.export_menu.addAction(action_pdf)
-        self.export_menu.addAction(action_jpg)
-        self.export_menu.addAction(action_png)
-        self.btn_approve.setMenu(self.export_menu)
-
-        self.btn_discard = QPushButton(" Discard & Adjust Zones")
-        self.btn_discard.setIcon(IconLibrary.get(Ico.CLOSE))
-        self.btn_discard.setStyleSheet("QPushButton { background-color: #DC3545; color: white; border: none; } QPushButton:hover { background-color: #C82333; }")
+        export_layout = QHBoxLayout(self.export_tools)
+        self.btn_export = QPushButton(" 💾 Export Ballooned Drawing")
+        self.btn_export.clicked.connect(lambda: self.export_drawing(".pdf"))
+        self.btn_discard = QPushButton(" ❌ Discard & Rerun")
         self.btn_discard.clicked.connect(self.discard_preview)
-
-        action_layout.addWidget(self.btn_approve, stretch=1)
-        action_layout.addWidget(self.btn_discard, stretch=1)
-
-        export_layout.addWidget(nav_row)
-        export_layout.addWidget(action_row)
+        export_layout.addWidget(self.btn_export)
+        export_layout.addWidget(self.btn_discard)
         self.export_tools.hide()
         layout.addWidget(self.export_tools)
 
+        # Canvas
         self.scene = QGraphicsScene()
         self.canvas = GreenZoneCanvas(self.scene, self)
         layout.addWidget(self.canvas)
 
-        self.original_pdf_path = None
-        self.preview_pdf_path = None
-        self.current_pdf_path = None
-        self.current_page_idx = 0 
-        self.pdf_pixmap_item = None
-        self.base_dpi = 144
-        logger.info("ExtractionPage UI Module completely loaded.")
+        # Bottom Extract Button
+        self.btn_extract = QPushButton(" Extract Selected Green Zones")
+        self.btn_extract.setStyleSheet("background-color: #28A745; color: white; font-weight: bold; padding: 12px;")
+        self.btn_extract.clicked.connect(self.trigger_extraction)
+        self.btn_extract.hide()
+        layout.addWidget(self.btn_extract)
+
+        master_layout.addWidget(self.left_panel, stretch=1)
+        
+        # Right Panel (Interactive Review)
+        self.review_panel = ReviewPanel(self)
+        master_layout.addWidget(self.review_panel)
+        
+        self.review_panel.btn_del.clicked.connect(self.delete_table_row)
+        self.review_panel.btn_finalize.clicked.connect(self.finalize_extraction)
 
     def load_pdf(self):
-        logger.info("User requested to load a PDF drawing.")
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open Drawing", "", "PDF Files (*.pdf)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Open Blueprint", "", "PDF Files (*.pdf)")
         if file_path:
             self.original_pdf_path = file_path
-            self.is_preview_mode = False
-            self.page_selector.blockSignals(True)
-            self.page_selector.clear()
-            
-            try:
-                doc = fitz.open(file_path)
-                logger.debug(f"PyMuPDF detected {doc.page_count} pages.")
-                for i in range(doc.page_count):
-                    self.page_selector.addItem(f"Page {i + 1}", userData=i)
-                self.current_page_idx = 0
-                
-                if doc.page_count > 1: self.page_selector.show()
-                else: self.page_selector.hide()
-                    
-                self.page_selector.blockSignals(False)
-                self.render_pdf_to_canvas(file_path, self.current_page_idx)
-                self.btn_extract.setEnabled(True)
-            except Exception as e:
-                logger.error(f"PyMuPDF crashed while attempting to load PDF: {e}")
-                QMessageBox.critical(self, "PDF Load Error", str(e))
+            self.current_pdf_path = file_path
+            self.current_page_idx = 0
+            self.btn_extract.show()
+            self.render_pdf_to_canvas(file_path, 0)
 
-    def change_page(self, index):
-        if index >= 0:
-            self.current_page_idx = self.page_selector.currentData()
-            logger.info(f"User changed view to Page Index: {self.current_page_idx}")
-            self.render_pdf_to_canvas(self.current_pdf_path, self.current_page_idx)
-
-    def render_pdf_to_canvas(self, path, page_idx):
-        logger.info(f"Rendering Path: {path} | Page: {page_idx} to Graphics Canvas.")
-        self.current_pdf_path = path
-        self.current_page_idx = page_idx
-        self.pdf_pixmap_item = None 
-        self.canvas.resetTransform()
-        self.canvas.current_view_scale = 1.0
+    def render_pdf_to_canvas(self, pdf_path, page_num):
+        doc = fitz.open(pdf_path)
+        page = doc[page_num]
+        mat = fitz.Matrix(2.0, 2.0) # 144 DPI (Scale Factor = 2.0)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img = QImage(pix.samples, pix.w, pix.h, pix.stride, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(img)
         self.scene.clear()
-        
-        if path == self.original_pdf_path:
-            self.canvas.rect_items.clear()
-            
-        self.canvas.active_rect_item, self.canvas.drawing_mode = None, False
-        self.re_render_hd_pdf(1.0)
-        self.canvas.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
-
-    def re_render_hd_pdf(self, zoom_scale):
-        if not self.current_pdf_path:
-            logger.warning("Attempted to render HD PDF but current_pdf_path is empty.")
-            return
-             
-        try:
-            doc = fitz.open(self.current_pdf_path)
-            page = doc[self.current_page_idx]
-            target_dpi = max(min(int(self.base_dpi * zoom_scale), 800), self.base_dpi)
-            logger.debug(f"PyMuPDF rendering at {target_dpi} DPI")
-
-            pix = page.get_pixmap(dpi=target_dpi, colorspace=fitz.csRGB, alpha=False)
-            img = QImage(pix.samples, pix.w, pix.h, pix.stride, QImage.Format_RGB888)
-            new_pixmap = QPixmap.fromImage(img)
-
-            if self.pdf_pixmap_item is None: 
-                self.pdf_pixmap_item = self.scene.addPixmap(new_pixmap)
-            else: 
-                self.pdf_pixmap_item.setPixmap(new_pixmap)
-                
-            self.pdf_pixmap_item.setScale(self.base_dpi / target_dpi)
-            doc.close()
-            logger.debug("HD PDF render cycle completed successfully.")
-        except Exception as e:
-            logger.error(f"Error during HD PDF Render: {e}")
+        self.scene.addPixmap(pixmap)
+        doc.close()
 
     def trigger_extraction(self):
-        logger.info("Extraction Process Triggered by User.")
         zones = self.canvas.get_selected_zones()
-        if not zones:            
-            logger.warning("Extraction aborted: No zones selected.")
+        if not zones: 
             return QMessageBox.warning(self, "No Zones", "Please draw at least one green zone first!")
             
         try:
-            # 1. Update UI to show processing state
-            self.btn_extract.setText(" ⏳ Extracting & Ballooning... Please Wait")
+            self.btn_extract.setText(" ⏳ Extracting & Analyzing...")
             self.btn_extract.setEnabled(False)
             QApplication.processEvents()
 
-            logger.info("Dynamically importing ManualExtractionPipeline...")
-            try:
-                from pipeline.manual_extraction_pipeline import ManualExtractionPipeline
-            except ModuleNotFoundError as e:
-                logger.critical(f"FATAL PATH ERROR: Python sys.path does not recognize the project root. Current sys.path: {sys.path}")
-                raise e
-
-            logger.info(f"Instantiating Pipeline with project_root: {PROJECT_ROOT}")
-            pipeline = ManualExtractionPipeline(PROJECT_ROOT)
+            from pipeline.manual_extraction_pipeline import ManualExtractionPipeline
+            self.pipeline = ManualExtractionPipeline(Path(PROJECT_ROOT))
             
-            logger.info(f"Executing pipeline on {Path(self.current_pdf_path).name} (Page {self.current_page_idx + 1})")
-            result, preview_path = pipeline.execute(Path(self.current_pdf_path), self.current_page_idx + 1, zones)
-            logger.info(f"Pipeline Execution Complete. Ballooned FAI saved to: {preview_path}")
+            # Execute Backend WITHOUT rendering the baked Blue Box PDF
+            self.master_intelligence, _ = self.pipeline.execute(
+                Path(self.current_pdf_path), 
+                self.current_page_idx + 1, 
+                zones,
+                debug_mode=False 
+            )
             
-            # 3. Transition to Preview Mode
-            self.preview_pdf_path = preview_path
-            self.is_preview_mode = True
-
+            # Switch to UI Preview Mode
+            self.canvas.clear_all_rects()
+            self.canvas.is_preview_mode = True
+            
+            # Paint Native Interactive Blue Boxes on the UI Canvas
+            self.overlay_interactive_blue_boxes()
+            
+            # Populate Side Table
+            self.populate_review_table()
+            
+            # Adjust UI
             self.primary_tools.hide()
             self.btn_extract.hide()
-            self.export_tools.show()
-
-            # Reset Extract Button for future use
-            self.btn_extract.setText(" Extract Selected Green Zones")
-            self.btn_extract.setEnabled(True)
-
-            # 4. Render the newly generated ballooned PDF (Always Page 0 of the preview)
-            self.render_pdf_to_canvas(str(self.preview_pdf_path), 0)
+            self.review_panel.show()
             
         except Exception as e:
-            logger.exception(f"Exception caught during trigger_extraction: {str(e)}")
+            logger.exception(f"Extraction failed: {e}")
             self.btn_extract.setText(" Extract Selected Green Zones")
             self.btn_extract.setEnabled(True)
             QMessageBox.critical(self, "Extraction Error", str(e))
 
+    def overlay_interactive_blue_boxes(self):
+        """Translates backend dict coordinates into native PySide6 Blue Boxes."""
+        scale = 2.0 # Converts PDF 72 DPI to Canvas 144 DPI
+        for view in self.master_intelligence:
+            for dim in view.get("dimensions", []):
+                bbox = dim.get("bounding_box_pdf", [0,0,0,0])
+                if bbox == [0,0,0,0]: continue
+                
+                rect = QRectF(bbox[0]*scale, bbox[1]*scale, (bbox[2]-bbox[0])*scale, (bbox[3]-bbox[1])*scale)
+                rect_item = QGraphicsRectItem(rect)
+                rect_item.setPen(QPen(QColor(0, 0, 255), 2, Qt.SolidLine))
+                rect_item.setBrush(QColor(0, 0, 255, 30))
+                rect_item.setFlag(QGraphicsRectItem.ItemIsSelectable, True)
+                rect_item.setFlag(QGraphicsRectItem.ItemIsMovable, True)
+                
+                rect_item.dim_ref = dim # Secretly link the box to the dictionary!
+                
+                self.canvas.scene().addItem(rect_item)
+                self.canvas.rect_items.append(rect_item)
+
+    def populate_review_table(self):
+        self.review_panel.table.setRowCount(0)
+        row_idx = 0
+        for view in self.master_intelligence:
+            for dim in view.get("dimensions", []):
+                self.review_panel.table.insertRow(row_idx)
+                
+                id_item = QTableWidgetItem(str(dim.get("balloon_id", "")))
+                id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable) 
+                spec_item = QTableWidgetItem(dim.get("specification", ""))
+                tol_item = QTableWidgetItem(dim.get("tolerance", ""))
+                
+                spec_item.setData(Qt.UserRole, dim) 
+                
+                self.review_panel.table.setItem(row_idx, 0, id_item)
+                self.review_panel.table.setItem(row_idx, 1, spec_item)
+                self.review_panel.table.setItem(row_idx, 2, tol_item)
+                row_idx += 1
+
+    def add_manual_box_to_table(self, rect_item):
+        """Fires automatically when the user draws a new blue box on the canvas."""
+        scale = 0.5 # Converts Canvas 144 DPI back to PDF 72 DPI
+        rect = rect_item.sceneBoundingRect()
+        pdf_bbox = [rect.left() * scale, rect.top() * scale, rect.right() * scale, rect.bottom() * scale]
+        
+        row_idx = self.review_panel.table.rowCount()
+        self.review_panel.table.insertRow(row_idx)
+        
+        next_id = 1
+        if row_idx > 0:
+            prev_id_str = self.review_panel.table.item(row_idx - 1, 0).text()
+            if prev_id_str.isdigit():
+                next_id = int(prev_id_str) + 1
+                
+        new_dim = {
+            "balloon_id": next_id,
+            "specification": "MANUAL ENTRY",
+            "tolerance": "",
+            "bounding_box_pdf": pdf_bbox,
+            "raw_text": "MANUAL ENTRY"
+        }
+        
+        rect_item.dim_ref = new_dim
+        
+        if self.master_intelligence:
+            self.master_intelligence[0]["dimensions"].append(new_dim)
+        else:
+            self.master_intelligence.append({"view_name": "MANUAL_VIEW", "dimensions": [new_dim]})
+            
+        id_item = QTableWidgetItem(str(next_id))
+        id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+        spec_item = QTableWidgetItem("MANUAL ENTRY")
+        spec_item.setData(Qt.UserRole, new_dim)
+        tol_item = QTableWidgetItem("")
+        
+        self.review_panel.table.setItem(row_idx, 0, id_item)
+        self.review_panel.table.setItem(row_idx, 1, spec_item)
+        self.review_panel.table.setItem(row_idx, 2, tol_item)
+        self.review_panel.table.scrollToBottom()
+
+    def remove_box_from_table(self, dim_dict):
+        """Fires automatically when the user presses DELETE on a canvas blue box."""
+        if not dim_dict: return
+        for row in range(self.review_panel.table.rowCount()):
+            spec_item = self.review_panel.table.item(row, 1)
+            if spec_item and spec_item.data(Qt.UserRole) == dim_dict:
+                self.review_panel.table.removeRow(row)
+                break
+
+    def delete_table_row(self):
+        """Fires if the user clicks the Delete Button inside the Review Panel."""
+        current_row = self.review_panel.table.currentRow()
+        if current_row >= 0:
+            spec_item = self.review_panel.table.item(current_row, 1)
+            dim_dict = spec_item.data(Qt.UserRole)
+            
+            # Wipe it from the canvas visually
+            for item in self.canvas.rect_items:
+                if getattr(item, 'dim_ref', None) == dim_dict:
+                    self.canvas.scene().removeItem(item)
+                    self.canvas.rect_items.remove(item)
+                    break
+                    
+            self.review_panel.table.removeRow(current_row)
+
+    def finalize_extraction(self):
+        self.review_panel.btn_finalize.setText("⏳ Generating Export...")
+        self.review_panel.btn_finalize.setEnabled(False)
+        QApplication.processEvents()
+        
+        scale = 0.5
+        active_dims = []
+        
+        # Scrape all edited text and adjusted box coordinates
+        for row in range(self.review_panel.table.rowCount()):
+            spec_item = self.review_panel.table.item(row, 1)
+            tol_item = self.review_panel.table.item(row, 2)
+            
+            dim_dict = spec_item.data(Qt.UserRole)
+            if dim_dict:
+                dim_dict["specification"] = spec_item.text()
+                dim_dict["tolerance"] = tol_item.text()
+                dim_dict["raw_text"] = spec_item.text()
+                
+                # Fetch dynamically shifted coordinates from UI canvas
+                for item in self.canvas.rect_items:
+                    if getattr(item, 'dim_ref', None) == dim_dict:
+                        rect = item.sceneBoundingRect()
+                        dim_dict["bounding_box_pdf"] = [
+                            rect.left() * scale, rect.top() * scale, 
+                            rect.right() * scale, rect.bottom() * scale
+                        ]
+                        break
+                        
+                active_dims.append(id(dim_dict))
+
+        # Prune deleted dimensions from Master Intelligence
+        for view in self.master_intelligence:
+            view["dimensions"] = [d for d in view.get("dimensions", []) if id(d) in active_dims]
+
+        try:
+            # Re-render with debug_mode=False to generate real Red Balloons!
+            final_pdf_path = self.pipeline.renderer.render_fai_page(
+                Path(self.current_pdf_path), 
+                self.current_page_idx + 1, 
+                self.master_intelligence, 
+                debug_mode=False
+            )
+            
+            self.pipeline.excel_service.generate_inspection_report(
+                Path(self.current_pdf_path).name, 
+                self.master_intelligence
+            )
+            
+            # Clear UI and Load the Final Result
+            self.canvas.is_preview_mode = False
+            self.canvas.clear_all_rects()
+            self.preview_pdf_path = final_pdf_path
+            self.render_pdf_to_canvas(str(self.preview_pdf_path), 0)
+            
+            self.review_panel.hide()
+            self.export_tools.show()
+            QMessageBox.information(self, "Success", "Drawing Ballooned and Excel Report Generated Successfully!")
+            
+        except Exception as e:
+            logger.error(f"Finalize failed: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to finalize report:\n{e}")
+            
+        self.review_panel.btn_finalize.setText("✅ Finalize & Export Report")
+        self.review_panel.btn_finalize.setEnabled(True)
+
     def discard_preview(self):
         logger.info("User discarded preview. Returning to standard canvas.")
-        self.is_preview_mode = False
+        self.canvas.is_preview_mode = False
+        self.canvas.clear_all_rects()
         self.export_tools.hide()
         self.primary_tools.show()
         self.btn_extract.show()
+        self.btn_extract.setText(" Extract Selected Green Zones")
+        self.btn_extract.setEnabled(True)
+        self.review_panel.hide()
         self.render_pdf_to_canvas(self.original_pdf_path, self.current_page_idx)
 
     def export_drawing(self, ext):
-        logger.info(f"User requested Export Format: {ext}")
-        if not self.preview_pdf_path or not Path(self.preview_pdf_path).exists():
-            logger.error("Export Failed: Preview file does not exist locally.")
-            return QMessageBox.warning(self, "Error", "No ballooned preview found to export!")
-
-        default_name = f"{Path(self.original_pdf_path).stem}_BALLOONED{ext}"
-        
-        filter_str = ""
-        if ext == ".pdf": filter_str = "PDF Document (*.pdf)"
-        elif ext == ".jpeg": filter_str = "JPEG Image (*.jpeg)"
-        elif ext == ".png": filter_str = "PNG Image (*.png)"
-        
+        default_name = os.path.join(os.path.expanduser("~"), "Desktop", "Ballooned_Drawing.pdf")
+        filter_str = "PDF Files (*.pdf)"
         file_path, _ = QFileDialog.getSaveFileName(self, "Export Ballooned Drawing", default_name, filter_str)
 
-        # 2. Execute Save if path was chosen
         if file_path:
-            logger.info(f"User selected export path: {file_path}")
             try:
-                if file_path.endswith(".pdf"):
-                    logger.debug("Executing raw file copy for PDF Export.")
-                    shutil.copy(self.preview_pdf_path, file_path)
-                else:
-                    logger.debug("Executing PyMuPDF rasterization for Image Export.")
-                    doc = fitz.open(self.preview_pdf_path)
-                    page = doc[0]
-                    pix = page.get_pixmap(dpi=400, colorspace=fitz.csRGB, alpha=False)
-                    if file_path.endswith(".jpeg") or file_path.endswith(".jpg"):
-                        pix.save(file_path, "jpeg")
-                    else:
-                        pix.save(file_path, "png")
-                    doc.close()
-
-                logger.info("Export Successful!")
-                QMessageBox.information(self, "Export Successful", f"Drawing saved successfully to:\n{file_path}")
+                shutil.copy(self.preview_pdf_path, file_path)
+                QMessageBox.information(self, "Export Successful", f"Drawing saved to:\n{file_path}")
                 self.discard_preview() 
-                
             except Exception as e:
-                logger.error(f"File writing failed during export: {e}")
-                QMessageBox.critical(self, "Export Failed", f"Could not save the file:\n{str(e)}")
+                QMessageBox.critical(self, "Export Failed", str(e))
                 
-        else:
-            logger.info("User cancelled the export dialog.")
-            
+                

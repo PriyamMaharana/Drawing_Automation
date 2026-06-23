@@ -6,23 +6,26 @@ class OCRAutoCorrect:
         # ---------------------------------------------------------
         # 1. GD&T MODIFIERS (Material Conditions)
         # ---------------------------------------------------------
-        r'\(\s*[Mm]\s*\)': 'Ⓜ',      # Catches (M) or ( M ) -> Ⓜ
-        r'\[\s*[Mm]\s*\]': 'Ⓜ',      # Catches [M] -> Ⓜ
-        r'\(\s*[Ll]\s*\)': 'Ⓛ',      # Catches (L) or ( L ) -> Ⓛ
-        r'\(\s*[Ss]\s*\)': 'Ⓢ',      # Catches (S) or ( S ) -> Ⓢ
+        r'\(\s*[Mm]\s*\)': 'Ⓜ',      
+        r'\[\s*[Mm]\s*\]': 'Ⓜ',      
+        r'\(\s*[Ll]\s*\)': 'Ⓛ',      
+        r'\(\s*[Ss]\s*\)': 'Ⓢ', 
         
         # ---------------------------------------------------------
         # 2. GD&T CHARACTERISTICS (Form, Orientation, Location)
         # ---------------------------------------------------------
-        r'//': '∥',                  # Catches double slashes -> Parallelism
-        r'_\|_': '⟂',                # Catches _|_ -> Perpendicularity
-        r'\(\+\)': '⌖',              # Catches (+) -> Position
-        r'\(@\)': '◎',               # Catches (@) -> Concentricity
-        r'\([Oo]\)': '◎',            # Catches (O) -> Concentricity
-        r'<\s*>': '▱',               # Catches < > -> Flatness
-        r'/s*/s*': '▱',              # Catches / / -> Flatness
-        r'-\|\|-': '⌯',              # Catches -||- -> Symmetry
-        r'<\\': '∠',                 # Catches <\ -> Angularity
+        r'//': '∥',                  # Parallelism
+        r'_\|_': '⟂',                # Perpendicularity
+        r'\(\+\)': '⌖',              # Position (Crosshairs)
+        r'\(@\)': '◎',               # Concentricity
+        r'\([Oo]\)': '◎',            # Concentricity
+        r'<\s*>': '▱',               # Flatness
+        r'-\|\|-': '⌯',              # Symmetry (Three lines)
+        r'<\\': '∠',                 # Angularity
+        r'/\>': '↗',                 # Circular Runout (Angled Arrow)
+        r'->': '↗',                  # Circular Runout (Straight Arrow)
+        r'/\\': '⌓',                 # Surface Profile (Arch)
+        r'\(\^\)': '⌓',              # Surface Profile Alternative
         
         # ---------------------------------------------------------
         # 3. STANDARD ENGINEERING SYMBOLS
@@ -31,11 +34,7 @@ class OCRAutoCorrect:
         r'-\s*\+': '±',              # "- +" or "-+" -> ±
         r'^[OQ0]/': 'Ø',             # "O/" or "0/" -> Ø
         r'^0\s+(?=\d)': 'Ø',         # "0 10.5" -> Ø10.5
-        
-        # Catch Degrees (A number followed by a space and a lowercase 'o')
         r'(?<=\d)\s*[o](?!\w)': '°', # "45 o" or "45O" -> 45°
-        
-        # FIX: Close gaps in unilateral tolerances (e.g. "+ 0.2" -> "+0.2")
         r'\+\s+(?=\d)': '+',
         r'-\s+(?=\d)': '-',
         

@@ -41,10 +41,10 @@ class HybridEngine:
                     for span in line.get("spans", []):
                         text = span.get("text", "").strip()
                         bbox = span.get("bbox")
-                        height = bbox[3] - bbox[1]
                         
-                        # ANTI-NOISE FILTER: Discard microscopic dust/watermarks smaller than 4 pixels
-                        if text and height >= 4.0:
+                        # CRITICAL FIX: Removed the 'height >= 4.0' constraint. 
+                        # Scaled PDFs compress native text coordinates to < 4.0 points, causing valid dimensions to drop.
+                        if text:
                             blocks.append({"text": text, "bbox": bbox, "source": "vector"})
         return blocks
 
@@ -76,20 +76,58 @@ class HybridEngine:
         return blocks
 
     def _deduplicate_blocks(self, vector_blocks: list, ocr_blocks: list) -> list:
-        final_blocks = list(vector_blocks)
+        try:
+            from core.dictionaries.cad_dictionary import CADSignatures
+            gdt_symbols = CADSignatures.GDT_SYMBOLS
+        except ImportError:
+            gdt_symbols = ['⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌰', '⌭', '⌯', '▱', '⌓', '○', 'Ⓜ', 'Ⓛ', 'Ⓢ']
+
+        final_blocks = []
+        gdt_ocr_blocks = []
+        standard_ocr_blocks = []
+        
+        # Phase 1: Separate OCR blocks into GD&T vs Standard
         for ob in ocr_blocks:
-            obbox = ob["bbox"]
-            ocr_center_x = (obbox[0] + obbox[2]) / 2
-            ocr_center_y = (obbox[1] + obbox[3]) / 2
+            text = ob["text"]
+            # Identify FCF separators '|' and '│' or GD&T shapes that vector extraction misses
+            if any(sym in text for sym in gdt_symbols) or '│' in text or '|' in text or '[' in text:
+                gdt_ocr_blocks.append(ob)
+            else:
+                standard_ocr_blocks.append(ob)
+                
+        # Phase 2: Prioritize OCR for GD&T
+        for vb in vector_blocks:
+            v_center_x = (vb["bbox"][0] + vb["bbox"][2]) / 2
+            v_center_y = (vb["bbox"][1] + vb["bbox"][3]) / 2
             
-            is_duplicate = False
-            for vb in vector_blocks:
-                vbbox = vb["bbox"]
-                if vbbox[0] <= ocr_center_x <= vbbox[2] and vbbox[1] <= ocr_center_y <= vbbox[3]:
-                    is_duplicate = True
+            is_inside_gdt = False
+            # If native vector text falls inside an OCR GD&T frame, suppress the vector text
+            for gob in gdt_ocr_blocks:
+                gbox = gob["bbox"]
+                if gbox[0]-5 <= v_center_x <= gbox[2]+5 and gbox[1]-5 <= v_center_y <= gbox[3]+5:
+                    is_inside_gdt = True
+                    break
+            
+            if not is_inside_gdt:
+                final_blocks.append(vb)
+                
+        final_blocks.extend(gdt_ocr_blocks)
+        
+        # Phase 3: Dedup standard OCR against Vector
+        for ob in standard_ocr_blocks:
+            oc_x = (ob["bbox"][0] + ob["bbox"][2]) / 2
+            oc_y = (ob["bbox"][1] + ob["bbox"][3]) / 2
+            
+            is_dup = False
+            for vb in final_blocks:
+                vbox = vb["bbox"]
+                if vbox[0]-2 <= oc_x <= vbox[2]+2 and vbox[1]-2 <= oc_y <= vbox[3]+2:
+                    is_dup = True
                     break
                     
-            if not is_duplicate: final_blocks.append(ob)
+            if not is_dup:
+                final_blocks.append(ob)
+                
         return final_blocks
 
     def _spatial_merge(self, blocks: list) -> list:
@@ -112,7 +150,6 @@ class HybridEngine:
         for line in lines:
             line.sort(key=lambda b: b["bbox"][0]) 
             
-            # THE SPLIT LOGIC: Break apart text that is separated by large horizontal gaps
             entities = []
             current_entity = [line[0]]
             for i in range(1, len(line)):
@@ -120,7 +157,8 @@ class HybridEngine:
                 prev_b = current_entity[-1]
                 gap = b["bbox"][0] - prev_b["bbox"][2]
                 
-                if gap > 40.0:  # If the gap is wider than ~0.5 inches, split it!
+                # Split text separated by large gaps > 0.5 inches
+                if gap > 40.0:  
                     entities.append(current_entity)
                     current_entity = [b]
                 else:

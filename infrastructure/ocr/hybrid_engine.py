@@ -8,7 +8,7 @@ from typing import List, Dict
 logger = logging.getLogger(__name__) 
 
 try:
-    from core.utils.settings import PlatformSettings
+    from core.utils.settings import app_settings
 except ImportError as e:
     logger.error(f"Microservices import failure: {e}")
 
@@ -41,16 +41,19 @@ class HybridEngine:
                     for span in line.get("spans", []):
                         text = span.get("text", "").strip()
                         bbox = span.get("bbox")
-                        
-                        # CRITICAL FIX: Removed the 'height >= 4.0' constraint. 
-                        # Scaled PDFs compress native text coordinates to < 4.0 points, causing valid dimensions to drop.
                         if text:
                             blocks.append({"text": text, "bbox": bbox, "source": "vector"})
         return blocks
 
     def _extract_ocr_text(self, page: fitz.Page, clip_rect: fitz.Rect, ocr_engine, image_processor, debug_path: str) -> list:
         blocks = []
-        zoom = getattr(PlatformSettings, 'OCR_EXTRACTION_DPI', 300) / getattr(PlatformSettings, 'PDF_BASE_DPI', 72)
+        
+        raster_dpi = app_settings.get("extraction", "raster_dpi", 300)
+        preview_dpi = app_settings.get("extraction", "preview_dpi", 144)
+        pdf_base_dpi = 72.0
+        
+        zoom = raster_dpi / pdf_base_dpi
+        
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat, clip=clip_rect, alpha=False)
         
@@ -59,10 +62,11 @@ class HybridEngine:
         elif pix.n == 1: img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
 
         if image_processor and hasattr(image_processor, 'enhance_for_ocr'):
-            img_array = image_processor.enhance_for_ocr(img_array)
+            if app_settings.get("extraction", "line_text_enhancement", True):
+                img_array = image_processor.enhance_for_ocr(img_array)
 
         ocr_results = ocr_engine.extract_text(img_array)
-        scale_factor = getattr(PlatformSettings, 'PDF_BASE_DPI', 72) / getattr(PlatformSettings, 'OCR_EXTRACTION_DPI', 300)
+        scale_factor = pdf_base_dpi / raster_dpi
         
         for res in ocr_results:
             text = res.get("text", "").strip()
@@ -80,7 +84,11 @@ class HybridEngine:
             from core.dictionaries.cad_dictionary import CADSignatures
             gdt_symbols = CADSignatures.GDT_SYMBOLS
         except ImportError:
-            gdt_symbols = ['⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌰', '⌭', '⌯', '▱', '⌓', '○', 'Ⓜ', 'Ⓛ', 'Ⓢ']
+            gdt_symbols = [
+                '⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌰', '⌭', '⌯', '▱', '⌓', '⌢', '⌒', '─', '○', '◯',
+                'Ⓜ', 'Ⓛ', 'Ⓢ', 'Ⓟ', 'Ⓣ', 'Ⓕ', 'Ⓤ', 
+                '⌴', '⌵', '↧'
+            ]
 
         final_blocks = []
         gdt_ocr_blocks = []

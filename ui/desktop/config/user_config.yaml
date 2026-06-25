@@ -2,28 +2,23 @@ appearance:
   font_family: Segoe UI
   font_size: 12
   theme: white_theme.qss
-  ui_density: Compact
 export:
-  excel_template: Default Template
   generate_excel: true
   generate_pdf: true
-  generate_summary: true
-  header_style: Style 1
-ocr:
-  auto_enhance: true
-  dpi: 300 DPI
-  enable: true
+  output_directory: ""
+ballooning:
+  color: red
+  leader_line_color: red
+  radius: 20
+  shape: circle
+  text_size: 12
+extraction:
+  line_text_enhancement: true
+  min_confidence: 80
+  preview_dpi: 144
+  raster_dpi: 300
   engine: Tesseract
-  min_confidence: 85%
-output:
-  create_date_folder: true
-  default_export_format: Both (Excel + PDF)
-  default_path: C:/Users/Priyam Maharana/Downloads
-  keep_organized: true
-  open_after_processing: true
-processing:
-  auto_open_results: true
-  extract_metadata: true
-  extract_notes: true
-  extract_specifications: true
-  extract_tolerances: true
+performance:
+  hardware_acceleration: true
+  memory_watchdog_limit: 85
+  thread_count: 4

@@ -25,7 +25,7 @@ class TesseractEngine:
         results = []
         
         whitelist = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-+()[]Ø±°⌀⌖↗⌰⟂∥∠▱⌭⌓⌒ⓂⓁⓈ⌯◎─○⌴⌵↧'
-        custom_config = f'--oem 3 --psm 11 -c tessedit_char_whitelist="{whitelist}"'
+        custom_config = f'--oem 3 --psm 12 -c tessedit_char_whitelist="{whitelist}"'
 
         try:
             d = pytesseract.image_to_data(image, config=custom_config, output_type=Output.DICT)

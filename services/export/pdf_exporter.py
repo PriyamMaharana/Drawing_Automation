@@ -5,6 +5,7 @@ from typing import List, Dict
 
 try:
     from services.export.balloon_engine import AdaptiveBalloonEngine
+    from core.utils.settings import app_settings
 except ImportError:
     pass
 
@@ -19,8 +20,7 @@ class LosslessPDFExporter:
     def __init__(self, output_dir: Path):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        # Initialize Layer 10 Balloon Physics Engine
-        self.balloon_engine = AdaptiveBalloonEngine(balloon_radius=12.0)
+        self.balloon_engine = AdaptiveBalloonEngine()
 
     def export_ballooned_pdf(self, source_pdf_path: Path, master_intelligence: List[Dict]) -> Path:
         logger.info(f"Injecting lossless vector balloons into {source_pdf_path.name}")
@@ -56,16 +56,25 @@ class LosslessPDFExporter:
                         
                     radius = self.balloon_engine.radius
                     
+                    color_str = app_settings.get("ballooning", "color", "red").lower()
+                    color_map = {
+                        "red": (1, 0, 0),
+                        "blue": (0, 0, 1),
+                        "green": (0, 1, 0),
+                        "black": (0, 0, 0),
+                        "magenta": (1, 0, 1)
+                    }
+                    rgb_color = color_map.get(color_str, (1, 0, 0))
+                    
                     # Create red circle vector annotation
                     rect = fitz.Rect(bx - radius, by - radius, bx + radius, by + radius)
                     circle_annot = page.add_circle_annot(rect)
-                    circle_annot.set_colors(stroke=(1, 0, 0)) # Pure Red
+                    circle_annot.set_colors(stroke=rgb_color) # Pure Red
                     circle_annot.set_border(width=1.5)
                     circle_annot.update()
                     
                     # Create text inside the circle
-                    # Calculate center perfectly based on text length (1 vs 100)
-                    font_size = 10 if len(balloon_id) < 3 else 8
+                    font_size = int(app_settings.get("ballooning", "text_size", 12))
                     text_rect = fitz.Rect(bx - radius, by - (font_size/1.5), bx + radius, by + radius)
                     
                     text_annot = page.add_freetext_annot(
@@ -73,7 +82,7 @@ class LosslessPDFExporter:
                         balloon_id,
                         fontsize=font_size,
                         fontname="helv",
-                        text_color=(1, 0, 0),
+                        text_color=rgb_color,
                         align=fitz.TEXT_ALIGN_CENTER
                     )
                     text_annot.update()
@@ -88,3 +97,4 @@ class LosslessPDFExporter:
         except Exception as e:
             logger.error(f"Failed to generate ballooned PDF: {e}")
             raise
+        

@@ -52,7 +52,7 @@ class DimensionGroupingEngine:
             node_id = dim.get("node_id")
             if node_id and node_id in dim_to_group:
                 dim["group_id"] = dim_to_group[node_id]
-            else:
+            else:   
                 dim["group_id"] = None # Standalone dimension
                 
         return dimensions

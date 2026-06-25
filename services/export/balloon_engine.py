@@ -2,6 +2,11 @@ import logging
 import math
 from typing import List, Dict
 
+try:
+    from core.utils.settings import app_settings
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 class AdaptiveBalloonEngine:
@@ -11,8 +16,8 @@ class AdaptiveBalloonEngine:
     and remain attached to their target bounding boxes via spring forces.
     """
     
-    def __init__(self, balloon_radius: float = 12.0, padding: float = 4.0):
-        self.radius = balloon_radius
+    def __init__(self, padding: float = 4.0):
+        self.radius = float(app_settings.get("ballooning", "radius", 20.0))
         self.padding = padding
         self.repulsion_force = 200.0
         self.spring_constant = 0.1

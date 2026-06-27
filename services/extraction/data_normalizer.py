@@ -8,7 +8,7 @@ class ManufacturingDataNormalizer:
     def normalize(raw_string: str) -> dict:
         """
         Layer 6.5: Converts engineering strings into explicit limits and types.
-        Handles standard math, Surface Finishes (N9), Multipliers (4X), Min/Max, and Standalone Tolerances.
+        Upgraded to safely bypass math calculations for Threads and Holes.
         """
         raw_string = raw_string.strip()
         result = {
@@ -34,7 +34,31 @@ class ManufacturingDataNormalizer:
             result['nominal'] = raw_string
             return result
 
-        # 3. GD&T and Datums
+        # 3. NEW: Thread Check (MUST happen before math logic!)
+        if re.search(r'(?:^[M]\d+(?:[xX]\d+(?:\.\d+)?)?)|(?:(?:UNC|UNF|UNEF)\b)', raw_string, re.IGNORECASE):
+            result['type'] = "Thread Specification"
+            result['nominal'] = raw_string
+            result['upper_limit'] = "N/A"
+            result['lower_limit'] = "N/A"
+            return result
+
+        # 4. NEW: Complex Hole Features (Counterbore/Countersink/Depth)
+        if any(sym in raw_string for sym in ['⌴', '⌵', '↧', 'CBORE', 'CSK', 'DP']):
+            result['type'] = "Hole Feature"
+            result['nominal'] = raw_string
+            result['upper_limit'] = "N/A"
+            result['lower_limit'] = "N/A"
+            return result
+
+        # 5. NEW: Limits & Fits (e.g. Ø20 H7/g6)
+        if re.search(r'[a-zA-Z]\d{1,2}\s*/\s*[a-zA-Z]\d{1,2}', raw_string):
+            result['type'] = "Limits & Fits"
+            result['nominal'] = raw_string
+            result['upper_limit'] = "Table Lookup"
+            result['lower_limit'] = "Table Lookup"
+            return result
+
+        # 6. GD&T and Datums
         gdt_symbols = ['⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌰', '⌭', '⌯', '▱', '⌓']
         if any(sym in raw_string for sym in gdt_symbols) or '|' in raw_string:
             result['type'] = "Feature Control Frame"
@@ -45,7 +69,7 @@ class ManufacturingDataNormalizer:
             result['nominal'] = raw_string.strip('[]')
             return result
 
-        # 4. Standalone Tolerance Check (e.g. "±0.5" without a base value)
+        # 7. Standalone Tolerance Check (e.g. "±0.5" without a base value)
         if raw_string.startswith('±'):
             result['type'] = "Tolerance Only"
             tol_match = re.search(r'±\s*(\d+(?:\.\d+)?)', raw_string)
@@ -55,18 +79,17 @@ class ManufacturingDataNormalizer:
                 result['lower_limit'] = f"-{tol}"
             return result
 
-        # 5. Min / Max detection
+        # 8. Min / Max detection
         is_min = bool(re.search(r'\bMIN\.?\b', raw_string, re.IGNORECASE))
         is_max = bool(re.search(r'\bMAX\.?\b', raw_string, re.IGNORECASE))
 
-        # 6. Angular / Chamfer (Strict check to prevent catching 'X4' quantities)
-        # Only triggers if ° is present OR it strictly matches Num x Num without Ø
+        # 9. Angular / Chamfer (Strict check to prevent catching 'X4' quantities)
         if '°' in raw_string or (re.search(r'\d+(?:\.\d+)?\s*[xX]\s*\d+(?:\.\d+)?(?!.*[A-Za-z])', raw_string) and 'Ø' not in raw_string and '⌀' not in raw_string):
             result['type'] = "Angular / Chamfer"
             result['nominal'] = raw_string 
             return result
 
-        # 7. Isolate Base Type
+        # 10. Isolate Base Type
         if 'Ø' in raw_string or '⌀' in raw_string:
             result['type'] = "Diameter"
         elif 'R' in raw_string:
@@ -74,12 +97,11 @@ class ManufacturingDataNormalizer:
         else:
             result['type'] = "Linear"
 
-        # 8. Quantity Multiplier Clean-up (Removes "4X " or " X4" so it doesn't break math)
+        # 11. Quantity Multiplier Clean-up (Removes "4X " or " X4")
         clean_math_string = re.sub(r'^\d+\s*[xX]\s+', '', raw_string)
         clean_math_string = re.sub(r'\s*[xX]\s*\d+$', '', clean_math_string)
 
-        # 9. Extract Nominal Base Value 
-        # (Prevents catching numbers inside quotes like "L ± 5")
+        # 12. Extract Nominal Base Value 
         if '"' in clean_math_string or re.search(r'^[A-Za-z]\s*±', clean_math_string):
             result['type'] = "Variable Dimension"
             result['nominal'] = clean_math_string
@@ -93,7 +115,7 @@ class ManufacturingDataNormalizer:
         else:
             return result
 
-        # 10. Extract Tolerances and Calculate Limits
+        # 13. Extract Tolerances and Calculate Limits
         if '±' in clean_math_string:
             tol_match = re.search(r'±\s*(\d+(?:\.\d+)?)', clean_math_string)
             if tol_match:
@@ -118,12 +140,14 @@ class ManufacturingDataNormalizer:
             if minus_match:
                 result['lower_limit'] = round(result['nominal'] - float(minus_match.group(1)), 4)
 
-        # 11. Apply MIN / MAX Constraint Overrides
+        # 14. Apply MIN / MAX Constraint Overrides
         if is_min:
-            result['upper_limit'] = "Infinity" # Open upper bound
+            result['upper_limit'] = "Infinity" 
             result['type'] = f"{result['type']} (Min)"
         elif is_max:
-            result['lower_limit'] = 0.0 # Bounded by zero
+            result['lower_limit'] = 0.0 
             result['type'] = f"{result['type']} (Max)"
 
         return result
+    
+    

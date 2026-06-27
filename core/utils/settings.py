@@ -37,8 +37,7 @@ class PlatformSettingsManager:
             self.save_to_disk()
 
     # =========================================================================
-    # DYNAMIC PROPERTIES (Replaces your old static variables)
-    # Whenever the backend calls PlatformSettings.UI_RENDER_DPI, it fetches live!
+    # DYNAMIC PROPERTIES: UI & RENDERING
     # =========================================================================
 
     @property
@@ -66,6 +65,42 @@ class PlatformSettingsManager:
         return self.get("extraction", "min_confidence", 80)
 
     # =========================================================================
+    # DYNAMIC PROPERTIES: V5 ARCHITECTURE (ARBITRATION & VALIDATION)
+    # =========================================================================
+
+    @property
+    def NATIVE_PRECISION_THRESHOLD(self) -> float:
+        return self.get("arbitration", "native_precision_threshold", 0.95)
+
+    @property
+    def MIN_VECTOR_POINTS(self) -> int:
+        return self.get("arbitration", "min_vector_points", 5)
+
+    @property
+    def OCR_DENSITY_LOWER_BOUND(self) -> float:
+        return self.get("validation", "ocr_density_lower_bound", 0.005)
+
+    @property
+    def OCR_DENSITY_UPPER_BOUND(self) -> float:
+        return self.get("validation", "ocr_density_upper_bound", 0.60)
+
+    @property
+    def HEALTH_SCORE_ACCEPT(self) -> float:
+        return self.get("validation", "health_score_accept", 50.0)
+
+    @property
+    def HEALTH_SCORE_OPTIMAL(self) -> float:
+        return self.get("validation", "health_score_optimal", 80.0)
+
+    @property
+    def EDGE_INTERSECTION_PENALTY_MULTIPLIER(self) -> float:
+        return self.get("validation", "edge_intersection_penalty", 2.0)
+
+    @property
+    def LOGGING_LEVEL(self) -> str:
+        return self.get("logging", "level", "DEBUG")
+
+    # =========================================================================
     # GETTERS AND SETTERS FOR THE PYSIDE6 UI
     # =========================================================================
 
@@ -90,11 +125,50 @@ class PlatformSettingsManager:
 
     def _get_safe_defaults(self):
         return {
-            "appearance": {"font_size": 12, "theme": "light"},
-            "ballooning": {"color": "red", "leader_line_color": "red", "radius": 20, "shape": "circle", "text_size": 12},
-            "extraction": {"line_text_enhancement": True, "min_confidence": 80, "preview_dpi": 144, "raster_dpi": 300, "engine": "Tesseract"},
-            "export": {"generate_excel": True, "generate_pdf": True, "output_directory": ""},
-            "performance": {"hardware_acceleration": True, "memory_watchdog_limit": 85, "thread_count": 4}
+            "appearance": {
+                "font_size": 12, 
+                "theme": "light"
+            },
+            "ballooning": {
+                "color": "red", 
+                "leader_line_color": "red", 
+                "radius": 20, 
+                "shape": "circle", 
+                "text_size": 12
+            },
+            "extraction": {
+                "line_text_enhancement": True, 
+                "min_confidence": 80, 
+                "preview_dpi": 144, 
+                "raster_dpi": 300, 
+                "engine": "Tesseract"
+            },
+            "export": {
+                "generate_excel": True, 
+                "generate_pdf": True, 
+                "output_directory": ""
+            },
+            "performance": {
+                "hardware_acceleration": True, 
+                "memory_watchdog_limit": 85, 
+                "thread_count": 4
+            },
+            "arbitration": {
+                "native_precision_threshold": 0.95,
+                "min_vector_points": 5,
+                "prefer_native": True,
+                "ocr_confidence_threshold": 0.85
+            },
+            "validation": {
+                "ocr_density_lower_bound": 0.005,
+                "ocr_density_upper_bound": 0.60,
+                "health_score_accept": 50.0,
+                "health_score_optimal": 80.0,
+                "edge_intersection_penalty": 2.0
+            },
+            "logging": {
+                "level": "DEBUG"
+            }
         }
 
 # Instantiate global settings

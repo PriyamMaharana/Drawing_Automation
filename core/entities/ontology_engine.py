@@ -12,14 +12,15 @@ class OntologyEngine:
         """
         text_upper = text.upper().strip()
         
-        # 1. Reject Title Block / Note Noise
+        if any(kw in text_upper for kw in ["NOTE", "NOTES:", "UNLESS OTHERWISE SPECIFIED", "MATERIAL", "FINISH", "HEAT TREAT"]):
+            return "Manufacturing Note"
+        
         noise_patterns = [
             r"PART DRAWING",
-            r"MATERIAL:",
             r"REVISION",
             r"SCALE",
             r"DO NOT SCALE",
-            r"^[A-Z]{1,3}$"  # Reject random isolated letters like "b" or "wow" (if "WOW")
+            r"^[A-Z]{1,3}$"  
         ]
         
         for pattern in noise_patterns:
@@ -30,7 +31,7 @@ class OntologyEngine:
         if any(char.isdigit() for char in text):
             return "Dimension"
             
-        if any(sym in text for sym in ['⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌯']):
+        if any(sym in text for sym in ['⌖', '⊥', '⟂', '//', '∥', '∠', '◎', '↗', '⌯', '⌴', '⌵', '↧']):
             return "GD&T"
             
         return "REJECTED"

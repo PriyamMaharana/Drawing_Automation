@@ -22,3 +22,16 @@ performance:
   hardware_acceleration: true
   memory_watchdog_limit: 85
   thread_count: 4
+arbitration:
+  native_precision_threshold: 0.95
+  min_vector_points: 5
+  prefer_native: true
+  ocr_confidence_threshold: 0.85
+validation:
+  ocr_density_lower_bound: 0.005
+  ocr_density_upper_bound: 0.60
+  health_score_accept: 50.0
+  health_score_optimal: 80.0
+  edge_intersection_penalty: 2.0
+logging:
+  level: DEBUG

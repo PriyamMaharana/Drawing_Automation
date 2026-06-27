@@ -1,6 +1,6 @@
 app:
-  name: "CAD Intelligence Platform"
-  version: "1.4.0"
+  name: "Engineering Drawing Extractor"
+  version: "1.5.0"
 
 resources:
   logo: "resources/images/app_logo.png"

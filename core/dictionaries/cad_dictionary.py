@@ -10,15 +10,16 @@ class CADSignatures:
 
     # Standard Engineering Callout Keywords (Suffixes & Modifiers)
     KEYWORDS_LIST = [
-        r'THRU', r'TYP', r'MIN', r'MAX', r'REF', r'PCD', 
+        r'THRU', r'T\.?Y\.?P\.?', r'M\.?I\.?N\.?', r'M\.?A\.?X\.?', r'R\.?E\.?F\.?', r'P\.?C\.?D\.?', 
         r'EQL\s*SP', r'DP', r'DEEP', r'CSK', r'CBORE', 
-        r'CHAM', r'SPLINE', r'ASSY', r'BSC'
+        r'CHAM', r'SPLINE', r'ASSY', r'BSC',
+        r'HOLES?', r'PLCS?', r'PLACES?', r'UNC', r'UNF', r'UNEF'
     ]
 
     # Legacy compiled regexes (kept for compatibility with older extraction modules)
-    SYMBOLS = re.compile(r'[' + re.escape(''.join(GDT_SYMBOLS)) + r']')
-    KEYWORDS = re.compile(r'\b(' + '|'.join(KEYWORDS_LIST).replace(r'\s*', r'\s') + r')\b')
-    DIMENSIONS = re.compile(r'\b[RNMHhgkp]\d{1,3}\b')
+    SYMBOLS = re.compile(r'[' + re.escape(''.join(GDT_SYMBOLS)) + r']', re.IGNORECASE)
+    KEYWORDS = re.compile(r'\b(' + '|'.join(KEYWORDS_LIST).replace(r'\s*', r'\s') + r')\b', re.IGNORECASE)
+    DIMENSIONS = re.compile(r'\b[RNMHhgkp]\d{1,3}\b', re.IGNORECASE)
     TOLERANCES = re.compile(r'[+-]\s?\d*\.\d+')
 
 class OEMSignatures:
